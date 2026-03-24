@@ -1,7 +1,5 @@
-;;; --- ETIQUETA PAPERSPACE v118.73 (MASTER SUITE PROFESSIONAL) ---
-;;; Comando: ETIQUETAR, DASHBOARD, SYNC_TAG, FIX_ALL_CONDUITS
-;;; Esta rutina es el controlador central para el etiquetado inteligente en PaperSpace.
-;;; v118.73: Blindaje de Clonado (Silent-ESC) y Seguridad 39% Hard-Block.
+;;; --- ETIQUETA PAPERSPACE v118.74 (MASTER SUITE PROFESSIONAL) ---
+;;; v118.74: Fix Final "bad function" y Seguridad de Reactor DoubleClick.
 
 ;; --- 1. BASES DE DATOS DE CABLES ---
 (setq *MARLEW_DATA* '(
@@ -68,7 +66,7 @@
 (defun GetXDataHandle (en / xd) (if (setq xd (assoc -3 (entget en '("MARLEW_LINK")))) (cadadr xd) ""))
 
 ;; --- 3. MAPEADO INTELIGENTE ---
-(defun FindUltraSmartAttr (en base_tag / tags res)
+(defun FindUltraSmartAttr (en base_tag / tags res i_num)
   (setq tags (list (strcat "T_" base_tag) base_tag))
   (cond 
     ((member (strcase base_tag) '("ELEV" "ELEVACION")) (setq tags (append tags '("T_ELEV" "ELEVACION" "ELEV" "T_ELEVACION"))))
@@ -80,7 +78,7 @@
   )
   (setq res "") (foreach tg tags (if (and (= res "") (/= (GetAttrValue en tg) "")) (setq res (GetAttrValue en tg)))) res)
 
-(defun SetUltraSmartAttr (en base_tag val / tags ok)
+(defun SetUltraSmartAttr (en base_tag val / tags ok i_num)
   (setq tags (list (strcat "T_" base_tag) base_tag))
   (cond 
     ((member (strcase base_tag) '("ELEV" "ELEVACION")) (setq tags (append tags '("T_ELEV" "ELEVACION" "ELEV"))))
@@ -105,7 +103,7 @@
   (setq target (CleanTag diam_str)) 
   (cond ((wcmatch target "*11/2*") (setq d 40.9)) ((wcmatch target "*3/4*") (setq d 20.9)) ((wcmatch target "*2*") (setq d 52.5)) ((wcmatch target "*1*") (setq d 26.6)) (t (setq d 20.9))) (* pi (/ (expt d 2) 4.0)))
 
-(defun GetConduitData (obj / el diam i ca ta oc cl tl cv tv dc tag_m name)
+(defun GetConduitData (obj / el diam i ca ta oc cl tl cv tv dc name)
   (setq el (FindUltraSmartAttr obj "ELEVACION")) (if (= el "") (setq el "0.00"))
   (setq diam (FindUltraSmartAttr obj "DIAMETRO")) (if (= diam "") (setq diam "3/4\""))
   (setq name (FindUltraSmartAttr obj "TAG"))
@@ -123,7 +121,7 @@
   (setq oc (rtos (* (/ ta ca) 100.0) 2 2)) 
   (list el diam oc (reverse tl) (reverse cl) name (vla-get-Handle obj)))
 
-(defun ApplyDataToTag (tag_obj data / el diam oc tl cl i vis_state name bn p1 p2 pos parent_h)
+(defun ApplyDataToTag (tag_obj data / el diam oc tl cl i name bn pos parent_h rem)
   (setq el (nth 0 data) diam (nth 1 data) oc (nth 2 data) tl (nth 3 data) cl (nth 4 data) name (nth 5 data) parent_h (nth 6 data))
   (setq bn (strcase (vla-get-EffectiveName tag_obj)))
   (SetUltraSmartAttr tag_obj "ELEVACION" (strcat "EL. +" el))
@@ -155,7 +153,7 @@
 (setq *CLONE_MODE* nil)
 
 ;; --- 5. DASHBOARD ---
-(defun InternalCablePicker (en / dcl_id dcl_file f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop ent_copy obj_copy old_err cur_elev cats UpdateData RefreshList update_oc SubData ent_sync ent_pull obj_brush data_sync *DBLCLK_BACKUP* f_c f_q f_oc f_d f_e sub_loop data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id)
+(defun InternalCablePicker (en / dcl_id dcl_file f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop obj_copy old_err cur_elev cats RefreshList update_oc data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id f_c f_q f_oc f_d f_e f_id cur_hand final_data ss_f j en_f obj_f bn_f UpdateData ent_pull sub_loop)
   (if *CLONE_MODE* (progn (princ "\n>>> Dashboard ya abierto. <<<") (setq *CLONE_MODE* nil) (princ))) 
   (setq *CLONE_MODE* t *DBLCLK_BACKUP* (getvar "DBLCLKEDIT")) (setvar "DBLCLKEDIT" 0)
   
@@ -185,7 +183,7 @@
   (setq i 1) (repeat 5 (set (read (strcat "cx" (itoa i))) (FindUltraSmartAttr en (strcat "CABLE_TIPO_" (itoa i)))) (set (read (strcat "qx" (itoa i))) (FindUltraSmartAttr en (strcat "CANTIDAD_" (itoa i)))) (setq i (1+ i)))
 
   (setq dcl_file "C:/Users/Dfelix25046/Downloads/db.dcl" f (open dcl_file "w"))
-  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v152 Optimized)\";" f)
+  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v118.74 Final)\";" f)
   (write-line "  :column {" f)
   (write-line "    :edit_box { key=\"id_box\"; label=\"ID:\"; }" f)
   (write-line "    :row {" f)
@@ -199,8 +197,8 @@
   (write-line "          :popup_list { key=\"d_pop\"; label=\"D:\"; width=10; }" f)
   (write-line "          :edit_box { key=\"e_box\"; label=\"EL:\"; width=8; }" f)
   (write-line "        }" f)
-  (foreach i '("1" "2" "3" "4" "5") 
-    (write-line (strcat "        :row { :toggle { key=\"rb" i "\"; } :edit_box { key=\"c" i "\"; edit_width=20; } :edit_box { key=\"q" i "\"; edit_width=3; } }") f)
+  (foreach it '("1" "2" "3" "4" "5") 
+    (write-line (strcat "        :row { :toggle { key=\"rb" it "\"; } :edit_box { key=\"c" it "\"; edit_width=20; } :edit_box { key=\"q" it "\"; edit_width=3; } }") f)
   )
   (write-line "        :boxed_column { label=\"Resultado\";" f)
   (write-line "          :text { key=\"oc_tx\"; label=\"OCUPACION : 0.00%\"; }" f)
@@ -223,16 +221,16 @@
         (start_list "cat_pop") (foreach c cats (add_list c)) (end_list) (set_tile "cat_pop" (itoa *ACTIVE_CATALOG_IDX*))
         (start_list "d_pop") (foreach d diam_list (add_list d)) (end_list) (set_tile "d_pop" (itoa (cond ((vl-position cur_diam diam_list)) (0))))
         (set_tile "e_box" cur_elev) (set_tile "id_box" cur_id)
-        (foreach i '("1" "2" "3" "4" "5") (set_tile (strcat "c" i) (vl-princ-to-string (eval (read (strcat "cx" i))))) (set_tile (strcat "q" i) (vl-princ-to-string (eval (read (strcat "qx" i))))))
+        (foreach it '("1" "2" "3" "4" "5") (set_tile (strcat "c" it) (vl-princ-to-string (eval (read (strcat "cx" it))))) (set_tile (strcat "q" it) (vl-princ-to-string (eval (read (strcat "qx" it))))))
         (set_tile (strcat "rb" cur_slot) "1") (UpdateData *ACTIVE_CATALOG_IDX*) (update_oc)
         (action_tile "cat_pop" "(UpdateData (atoi $value)) (update_oc)")
         (action_tile "d_pop" "(update_oc)")
-        (action_tile "f_edit" "(setq filtered *CABLE_DATA* s_val (strcase (get_tile \"f_edit\")) filtered (vl-remove-if-not '(lambda (x) (wcmatch (strcase (car x)) (strcat \"*\" s_val \"*\"))) filtered)) (RefreshList)")
-        (action_tile "l_box" "(set_tile (strcat \"c\" cur_slot) (car (nth (atoi $value) filtered))) (update_oc)")
-        (foreach i '("1" "2" "3" "4" "5") (action_tile (strcat "rb" i) (strcat "(setq cur_slot \"" i "\")")) (action_tile (strcat "c" i) "(update_oc)") (action_tile (strcat "q" i) "(update_oc)"))
+        (action_tile "f_edit" "(progn (setq filtered *CABLE_DATA* s_val (strcase (get_tile \"f_edit\")) filtered (vl-remove-if-not '(lambda (x) (wcmatch (strcase (car x)) (strcat \"*\" s_val \"*\"))) filtered)) (RefreshList))")
+        (action_tile "l_box" "(progn (set_tile (strcat \"c\" cur_slot) (car (nth (atoi $value) filtered))) (update_oc))")
+        (foreach it '("1" "2" "3" "4" "5") (action_tile (strcat "rb" it) (strcat "(setq cur_slot \"" it "\")")) (action_tile (strcat "c" it) "(update_oc)") (action_tile (strcat "q" it) "(update_oc)"))
         (action_tile "btn_calc" "(update_oc)")
-        (action_tile "btn_copy" "(setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (get_tile \"id_box\")) (done_dialog 2)")
-        (action_tile "accept" "(setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (get_tile \"id_box\")) (if (>= oc_val 39.0) (alert (strcat \"OCUPACION: \" (rtos oc_val 2 2) \"% (LIMITE 39%)\")) (done_dialog 1))")
+        (action_tile "btn_copy" "(progn (setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (get_tile \"id_box\")) (done_dialog 2))")
+        (action_tile "accept" "(progn (setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (get_tile \"id_box\")) (if (>= oc_val 39.0) (alert (strcat \"OCUPACION: \" (rtos oc_val 2 2) \"% (LIMITE 39%)\")) (done_dialog 1)))")
         (setq st (start_dialog)) (unload_dialog dcl_id)
         (if (= st 2) 
           (progn 
@@ -282,6 +280,15 @@
       T) nil)
   (setvar "DBLCLKEDIT" *DBLCLK_BACKUP*) (setq *CLONE_MODE* nil) (setq *error* old_err) (princ))
 
+(defun DoubleClickCallback (reactor info / ent obj)
+  (setq ent (nentselp (cadr info)))
+  (if (and ent (setq obj (GetBlockRef ent)))
+    (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
+      (InternalCablePicker obj)
+    )
+  )
+  (princ)
+)
 
 ;; --- 6. COMANDOS ---
 (defun c:ETIQUETAR (/ ent obj data ins blk_name) 
@@ -299,13 +306,15 @@
             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) blk_name 1 1 1 0) data) 
             (princ "\n>>> VINCULADO Y ACTUALIZADO <<<")) 
           (alert (strcat "Falta el bloque: " blk_name)))))) (princ))
+
 (defun c:DASHBOARD () (vl-load-com) (if (setq e (nentselp "\nSeleccione conducto: ")) (progn (setq obj (GetBlockRef e)) (if (/= (FindUltraSmartAttr obj "DIAMETRO") "") (InternalCablePicker obj) (alert "No es conducto."))) (princ "\nCancelado.")) (princ))
-(defun c:CC () (c:SYNC_TAG))
 (defun c:SYNC_TAG () (vl-load-com) (if (setq ent (car (entsel "\nSELECCIONE ETIQUETA: "))) (progn (setq obj (GetBlockRef ent)) (if (setq src (car (entsel "\nSELECCIONE CONDUCTO: "))) (ApplyDataToTag obj (GetConduitData (GetBlockRef src))) (princ "\nCancelado."))) (princ)) (princ))
 (defun c:FIX_ALL_CONDUITS () (vl-load-com) (if (setq ss (ssget "X" '((0 . "INSERT")))) (progn (setq i 0) (repeat (sslength ss) (setq en (ssname ss i) obj (vlax-ename->vla-object en)) (if (/= (FindUltraSmartAttr en "DIAMETRO") "") (ApplyDataToTag obj (GetConduitData en))) (setq i (1+ i))) (princ (strcat "\n>>> ACTUALIZADOS (" (itoa i) ") <<<"))) (princ "\nSin bloques.")) (princ))
+
 (defun InitReactors () 
   (vl-load-com) 
   (foreach r (vlr-reactors :vlr-mouse-reactor) (foreach c (cdr r) (vlr-remove c)))
   (vlr-mouse-reactor "C" '((:vlr-beginDoubleClick . DoubleClickCallback)))
-  (princ "\n>>> GHOST LINK v118.73+ CARGADO. <<<"))
+  (princ "\n>>> GHOST LINK v118.74 FINAL CARGADO. <<<"))
+
 (InitReactors) (princ)

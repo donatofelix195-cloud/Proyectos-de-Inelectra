@@ -1,6 +1,6 @@
-;;; --- EXTRACTOR DE EXCEL v8.8.0 (FIX IDENTIFICACION + FORMATO) ---
-;;; v8.8.0: Auto-Identify TEEs by Attribute 'REDUCCION' if name-check fails.
-;;; v8.8.0: Final Column AutoFit with Formula-check.
+;;; --- EXTRACTOR DE EXCEL v8.8.3 (FORMULAS TEE/TB + FIX AUTOFIT) ---
+;;; v8.8.3: TEE y TB usan formulas directas de Excel.
+;;; v8.8.3: Correccion de cuelgue OLE al formatear fuentes.
 
 (vl-load-com)
 
@@ -39,7 +39,7 @@
 )
 
 ;; -- 3. MOTOR EXPORTADOR --
-(defun RunExcelExport (ss / xa xb xs r c t_s ty b_n b_o t_g v_l c_i er mi hm ft fc cr tn t6 t4 l3 lb ll rt tc ap ra at q tr row_data e n o tr_head is_tee)
+(defun RunExcelExport (ss / xa xb xs r c t_s ty b_n b_o t_g v_l c_i er mi hm ft fc cr tn t6 t4 l3 lb ll rt tc ap ra at q tr e n o tr_head)
   (setq mi 53 t_s '("BLOQUE") ty '() i 0 hm nil ft 0.0 fc 0.0 q (chr 34))
   (repeat (sslength ss)
     (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o))))
@@ -49,30 +49,26 @@
   (setq xa (vlax-get-or-create-object "Excel.Application")) (vla-put-Visible xa :vlax-true)
   (setq xb (vlax-invoke-method (vlax-get-property xa 'Workbooks) 'Add) xs (vlax-get-property xb 'ActiveSheet))
   (setq c 1)
-  (foreach head t_s
+  (foreach h t_s
     (setq tc (vlax-get-property xs 'Range (strcat (GetColName c) "1")))
-    (vlax-put-property tc 'Value2 head) (vlax-put-property (vlax-get-property tc 'Interior) 'Color 6299648)
+    (vlax-put-property tc 'Value2 h) (vlax-put-property (vlax-get-property tc 'Interior) 'Color 6299648)
     (vlax-put-property (vlax-get-property tc 'Font) 'Color 16777215) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (setq c (1+ c))
   )
   (setq r 2 i 0)
   (repeat (sslength ss)
     (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o))))
     (vlax-put-property (vlax-get-property xs 'Range (strcat "A" (itoa r))) 'Value2 n)
+    (if (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (setq ft (+ ft 1.0)) (if (wcmatch (strcase n) "*CONDULETA*") (setq fc (+ fc 1.0))))
     (setq ra '())
     (if (and (vlax-property-available-p o 'HasAttributes) (= (vla-get-HasAttributes o) :vlax-true))
       (foreach at (vlax-invoke o 'GetAttributes) (setq ra (cons (cons (vla-get-TagString at) (vla-get-TextString at)) ra))))
     (foreach co (GetConstantAttrs n) (setq ra (cons co ra)))
-    ;; Analisis profundo por atributos (Si tiene 'REDUCCION' es TEE)
-    (setq is_tee nil)
-    (if (wcmatch (strcase n) "*TEE*") (setq is_tee T))
-    (foreach att ra (if (wcmatch (strcase (car att)) "*REDUCC*") (setq is_tee T)))
-    (if is_tee (setq ft (+ ft 1.0)) (if (wcmatch (strcase n) "*CONDULETA*") (setq fc (+ fc 1.0))))
     (foreach ap ra
       (setq t_g (car ap) v_l (cdr ap) c_i (vl-position t_g t_s))
       (if (and c_i (member (strcase t_g) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD")))
         (progn (setq pz (if (and v_l (/= v_l "")) (distof v_l) 1.0))
-               (if (and is_tee (> pz 1.0)) (setq ft (+ (- ft 1.0) pz)))
-               (if (and (wcmatch (strcase n) "*CONDULETA*") (not is_tee) (> pz 1.0)) (setq fc (+ (- fc 1.0) pz)))))
+               (if (and (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (> pz 1.0)) (setq ft (+ (- ft 1.0) pz)))
+               (if (and (wcmatch (strcase n) "*CONDULETA*") (not (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")) (> pz 1.0)) (setq fc (+ (- fc 1.0) pz)))))
       (if c_i
         (progn (setq er (ProcessMetricBlock t_g v_l)) (setq tc (vlax-get-property xs 'Range (strcat (GetColName (1+ c_i)) (itoa r))))
                (cond ((= (car er) "TXT") (vlax-put-property tc 'Value2 (cadr er)))
@@ -83,31 +79,29 @@
     )
     (setq r (1+ r) i (1+ i))
   )
-  ;; FILTROS Y LIMPIEZA TABLA PRINCIPAL
   (setq tr_head (vlax-get-property xs 'Range (strcat "A1:" (GetColName (length t_s)) "1")))
   (vl-catch-all-apply 'vlax-invoke (list tr_head 'AutoFilter))
-  ;; ANEXOS CON FORMATO PREMIUM (ROSA / AZUL)
   (setq cr (+ r 2))
   (if (> ft 0.0)
-    (progn (setq tn (fix ft) t6 (fix (+ (* ft 0.6) 0.5)) t4 (- tn t6) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
+    (progn (setq tn (fix ft) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
            (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa cr))) 'Value2 "--- ANEXO: ACCESORIOS TEE ---") (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823) (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Extraido") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vla-put-Value2 tc tn) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Calculo 60% TEE") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vla-put-Value2 tc t6) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Calculo 40% TB") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vla-put-Value2 tc t4) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680) (setq cr (+ cr 5))))
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Extraido") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Value2 tn) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Calculo 60% TEE") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 1)) "*0.6,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Calculo 40% TB") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "-C" (itoa (+ cr 2)))) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680) (setq cr (+ cr 5))))
   (if (> fc 0.0)
-    (progn (setq tn (fix fc) l3 (fix (* fc 0.3)) lb (fix (* fc 0.3)) ll (- tn l3 lb) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
+    (progn (setq tn (fix fc) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
            (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa cr))) 'Value2 "--- ANEXO: CONDULETAS ---") (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823) (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Extraidas") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vla-put-Value2 tc tn) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "LR (30%)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vla-put-Value2 tc l3) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "LB (30%)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vla-put-Value2 tc lb) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "LL (40%)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vla-put-Value2 tc ll) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680) (setq cr (+ cr 6))))
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Extraidas") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Value2 tn) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "LR (30%)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=ROUND(C" (itoa (+ cr 1)) "*0.3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "LB (30%)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=ROUND(C" (itoa (+ cr 1)) "*0.3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "LL (40%)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "-C" (itoa (+ cr 2)) "-C" (itoa (+ cr 3)))) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680) (setq cr (+ cr 6))))
   (if hm
     (progn (setq range_str (strcat (GetColName mi) "2:" (GetColName mi) (itoa (1- r))) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
            (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa cr))) 'Value2 "--- ANEXO: CONDUIT ---") (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823) (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Longitud (MM)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," range_str ")")) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Metros Totales (MT)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "/1000")) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)
-           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Piezas Estimadas (3mts)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 2)) "/3,0)")) (vla-put-Bold (vla-get-Font tc) :vlax-true) (vla-put-Color (vla-get-Font tc) 16711680)))
-  (vlax-invoke-method (vlax-get-property (vlax-get-property xs 'UsedRange) 'Columns) 'AutoFit)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Longitud (MM)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," range_str ")")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Metros Totales (MT)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "/1000")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+           (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Piezas Estimadas (3mts)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 2)) "/3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)))
+  (vlax-invoke-method (vlax-get-property xs 'Columns) 'AutoFit)
   (vlax-put-property (vlax-get-property xs 'Columns (GetColName mi)) 'Hidden :vlax-true)
 )
 
@@ -130,9 +124,9 @@
   (if (and id (new_dialog "ex" id))
     (progn (ULV) (action_tile "f" "(UF $value)") (action_tile "l" "(TS $value)") (action_tile "accept" "(done_dialog 1)") (action_tile "cancel" "(done_dialog 0)") (setq rs (start_dialog)) (unload_dialog id)
       (if (= rs 1) (progn (setq sb '()) (foreach x bl (if (= (cdr x) 1) (setq sb (cons (car x) sb))))
-          (if sb (progn (setq ss_f (ssadd) i 0) (repeat (sslength ss) (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o)))) (if (member n sb) (ssadd e ss_ f)) (setq i (1+ i))) (RunExcelExport ss_f)) (alert "Seleccione bloques.")))))
+          (if sb (progn (setq ss_f (ssadd) i 0) (repeat (sslength ss) (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o)))) (if (member n sb) (ssadd e ss_f)) (setq i (1+ i))) (RunExcelExport ss_f)) (alert "Seleccione bloques.")))))
   )
   (if (and df (vl-file-size df)) (vl-file-delete df)) (princ)
 )
 
-(princ "\n--- EXCEL PRO v8.8.0 [FIX TOTAL ANEXOS] ---") (princ)
+(princ "\n--- EXCEL PRO v8.8.3 [FORMULAS Y AUTOFIT] ---") (princ)

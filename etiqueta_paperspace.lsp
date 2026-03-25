@@ -63,7 +63,7 @@
 (defun SetAttrValue (en tag val / vobj found target current_tag) (setq target (CleanTag tag) found nil val (vl-princ-to-string val)) (setq vobj (if (= (type en) 'ENAME) (vlax-ename->vla-object en) en)) (if (and vobj (vlax-property-available-p vobj 'HasAttributes) (= (vla-get-HasAttributes vobj) :vlax-true)) (foreach at (vlax-invoke vobj 'GetAttributes) (setq current_tag (CleanTag (vla-get-TagString at))) (if (= current_tag target) (progn (vla-put-TextString at val) (vla-update at) (setq found t))))) found)
 
 (defun SetXDataHandle (en h / res) (regapp "MARLEW_LINK") (entmod (append (entget en) (list (list -3 (list "MARLEW_LINK" (cons 1000 h)))))))
-(defun GetXDataHandle (en / xd) (if (setq xd (assoc -3 (entget en '("MARLEW_LINK")))) (cadadr xd) ""))
+(defun GetXDataHandle (en / xd) (if (and (setq xd (assoc -3 (entget en '("MARLEW_LINK")))) (cadr xd) (cadadr xd)) (cdr (cadadr xd)) ""))
 
 ;; --- 3. MAPEADO INTELIGENTE ---
 (defun FindUltraSmartAttr (en base_tag / tags res i_num)
@@ -281,7 +281,7 @@
   (setvar "DBLCLKEDIT" *DBLCLK_BACKUP*) (setq *CLONE_MODE* nil) (setq *error* old_err) (princ))
 
 (defun DoubleClickCallback (reactor info / ent obj)
-  (setq ent (nentselp (cadr info)))
+  (setq ent (nentselp (car info)))
   (if (and ent (setq obj (GetBlockRef ent)))
     (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
       (InternalCablePicker obj)

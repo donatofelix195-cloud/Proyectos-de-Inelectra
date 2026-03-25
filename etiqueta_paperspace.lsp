@@ -291,8 +291,9 @@
 )
 
 ;; --- 6. COMANDOS ---
-(defun c:ETIQUETAR (/ ent obj data ins opt p1 p2) 
+(defun c:ETIQUETAR (/ ent obj data ins opt p1 p2 p2_obj p1_obj s) 
   (vl-load-com) 
+  (setq s (if (= (getvar "TILEMODE") 1) (/ 1.0 (getvar "CANNOSCALEVALUE")) 1.0))
   (initget "Bandera Area AMbos")
   (setq opt (cond ((getkword "\nTipo de etiqueta [Bandera/Area/AMbos] <Bandera>: ")) ("Bandera")))
   (if (setq ent (car (entsel "\nSELECCIONE CONDUCTO ORIGEN: "))) 
@@ -303,22 +304,22 @@
         (cond 
           ((= opt "Bandera")
            (if (tblsearch "BLOCK" "band")
-             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "band" 1 1 1 0) data)
+             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "band" s s s 0) data)
              (alert "Falta el bloque: band")))
           ((= opt "Area")
            (if (tblsearch "BLOCK" "AREA_IDENT")
-             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" 1 1 1 0) data)
+             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" s s s 0) data)
              (alert "Falta el bloque: AREA_IDENT")))
           ((= opt "AMbos")
            (if (and (tblsearch "BLOCK" "band") (tblsearch "BLOCK" "AREA_IDENT"))
              (progn 
-               ;; 1. Primero insertar el Area en el punto clicado (ins)
-               (setq p2_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" 1 1 1 0)))
+               ;; 1. Primero insertar el Area en el punto clicado (ins) - Escalado s
+               (setq p2_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" s s s 0)))
                (if (not (vl-catch-all-error-p p2_obj)) (ApplyDataToTag p2_obj data))
                
-               ;; 2. Luego insertar la Bandera a su derecha: +9 en X y bajamos -3.5 en Y para que el círculo de ins quede al centro de la tabla
-               (setq p1 (list (+ (car ins) 9.0) (- (cadr ins) 3.5) (caddr ins)))
-               (setq p1_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point p1) "band" 1 1 1 0)))
+               ;; 2. Luego insertar la Bandera a su derecha con offset escalado s
+               (setq p1 (list (+ (car ins) (* 9.0 s)) (- (cadr ins) (* 3.5 s)) (caddr ins)))
+               (setq p1_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point p1) "band" s s s 0)))
                (if (not (vl-catch-all-error-p p1_obj)) (ApplyDataToTag p1_obj data))
                
                (princ "\n>>> AMBOS INSERTADOS Y VINCULADOS <<<"))

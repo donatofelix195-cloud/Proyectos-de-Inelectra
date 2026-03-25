@@ -1,5 +1,5 @@
-;;; --- EXCEL PRO v8.8.3 (IMPERIAL) ---
-;;; v8.8.3: Formulas directas, Fix AutoFit, Strict Identification.
+;;; --- EXCEL PRO v8.8.4 (IMPERIAL) ---
+;;; v8.8.4: Reemplazo absoluto de todo prefijo 'vla-' por 'vlax-put-property'.
 
 (vl-load-com)
 
@@ -26,7 +26,7 @@
   (if (and n (/= vl ""))
     (cond 
       ((member (strcase tg) '("LONGITUD" "L" "LEN" "LENGTH" "LONG"))
-       (setq m n) (if (< m 120) (setq m 120.0) (setq m (* (fix (+ (/ m 120.0) 0.5)) 120.0)))
+       (setq m n) (if (< m 39.37) (setq m 39.37) (setq m (* (fix (+ (/ m 39.37) 0.5)) 39.37)))
        (setq r (list "WIN" m m)))
       ((or (wcmatch (strcase tg) "*DIAM*") (member (strcase tg) '("D" "DIA" "DIAMETRO"))) (setq r (list "TXT" (strcat (rtos n 2 2) q))))
       ((member (strcase tg) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD")) (setq r (list "NUM" (fix (+ n 0.999999)))))
@@ -79,16 +79,16 @@
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "*0.0254")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Total Pies (FT)")
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "/12")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
-  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "Piezas Estimadas (10ft)")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 3)) "/10,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "Piezas Estimadas (3mts)")
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 2)) "/3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (+ cr 5)
 )
 
 ;; --- COMANDO PRINCIPAL ---
 
 (defun c:EXCEL_PRO ( / ss i e o n bl current df f id rs sb q c40 c41 xa xb xs r c t_s ty b_n b_o t_g v_l c_i er mi hm ft fc cr h tc ra pz ap range_str)
-  (princ "\n--- EXCEL PRO v8.8.3 IN ---")
-  (setq ss (ssget "X" '((0 . "INSERT"))))
+  (princ "\n--- EXCEL PRO v8.8.4 IN ---")
+  (setq ss (ssget "X" '((0 . "INSERT") (410 . "Model"))))
   (if (not ss) (progn (alert "No hay bloques.") (exit)))
   
   (setq bl '() i 0 q (chr 34) c40 (chr 40) c41 (chr 41))
@@ -110,20 +110,52 @@
             (progn (setq mi 53 t_s '("BLOQUE") ty '() i 0 hm nil ft 0.0 fc 0.0)
               (repeat (sslength ss) (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o)))) (if (and (member n sb) (not (member n ty))) (setq ty (append ty (list n)))) (setq i (1+ i)))
               (foreach b_n ty (setq b_o (EX_GBO b_n)) (foreach t_g b_o (if (not (member t_g t_s)) (setq t_s (append t_s (list t_g))))))
-              (setq xa (vlax-get-or-create-object "Excel.Application")) (vla-put-Visible xa :vlax-true) (setq xb (vlax-invoke-method (vlax-get-property xa 'Workbooks) 'Add) xs (vlax-get-property xb 'ActiveSheet))
-              (setq c 1) (foreach h t_s (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX c) "1"))) (vla-put-Value2 tc h) (vlax-put-property (vlax-get-property tc 'Interior) 'Color 6299648) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16777215) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (setq c (1+ c)))
+              (setq xa (vlax-get-or-create-object "Excel.Application")) (vlax-put-property xa 'Visible :vlax-true) (setq xb (vlax-invoke-method (vlax-get-property xa 'Workbooks) 'Add) xs (vlax-get-property xb 'ActiveSheet))
+              (setq c 1) (foreach h t_s (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX c) "1"))) (vlax-put-property tc 'Value2 h) (vlax-put-property (vlax-get-property tc 'Interior) 'Color 6299648) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16777215) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (setq c (1+ c)))
               (setq r 2 i 0)
-              (repeat (sslength ss) (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o))))
+              (repeat (sslength ss) 
+                (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o))))
                 (if (member n sb) 
-                  (progn (vl-catch-all-apply 'vla-put-Value2 (list (vlax-get-property xs 'Range (strcat "A" (itoa r))) n))
-                    (if (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (setq ft (+ ft 1.0))) (if (wcmatch (strcase n) "*CONDULETA*") (setq fc (+ fc 1.0)))
-                    (setq ra '()) (if (and (vlax-property-available-p o 'HasAttributes) (= (vla-get-HasAttributes o) :vlax-true)) (foreach at (vlax-invoke o 'GetAttributes) (setq ra (cons (cons (vla-get-TagString at) (vla-get-TextString at)) ra))))
+                  (progn 
+                    (vl-catch-all-apply 'vlax-put-property (list (vlax-get-property xs 'Range (strcat "A" (itoa r))) 'Value2 n))
+                    (if (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (setq ft (+ ft 1.0)) (if (wcmatch (strcase n) "*CONDULETA*") (setq fc (+ fc 1.0))))
+                    (setq ra '()) 
+                    (if (and (vlax-property-available-p o 'HasAttributes) (= (vla-get-HasAttributes o) :vlax-true)) 
+                      (foreach at (vlax-invoke o 'GetAttributes) (setq ra (cons (cons (vla-get-TagString at) (vla-get-TextString at)) ra)))
+                    )
                     (foreach co (EX_GCA n) (setq ra (cons co ra)))
-                    (foreach ap ra (setq t_g (car ap) v_l (cdr ap) c_i (vl-position t_g t_s))
-                      (if (and c_i (member (strcase t_g) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD"))) (progn (setq pz (if (and v_l (/= v_l "")) (distof v_l) 1.0)) (if (and (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (> pz 1.0)) (setq ft (+ (- ft 1.0) pz))) (if (and (wcmatch (strcase n) "*CONDULETA*") (not (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")) (> pz 1.0)) (setq fc (+ (- fc 1.0) pz)))))
-                      (if c_i (progn (setq er (EX_PIB t_g v_l) tc (vlax-get-property xs 'Range (strcat (EX_GEX (1+ c_i)) (itoa r)))) (if (not (vl-catch-all-error-p er)) (cond ((= (car er) "TXT") (vlax-put-property tc 'Value2 (cadr er))) ((= (car er) "NUM") (vlax-put-property tc 'Value2 (cadr er))) ((= (car er) "RAW") (vlax-put-property tc 'Value2 (cadr er))) ((= (car er) "WIN") (vlax-put-property tc 'Value2 (cadr er)) (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX mi) (itoa r))) 'Value2 (caddr er)) (setq hm T))))))))
-                ) (setq r (1+ r))
-              ) (setq i (1+ i)))
+                    (foreach ap ra 
+                      (setq t_g (car ap) v_l (cdr ap) c_i (vl-position t_g t_s))
+                      (if (and c_i (member (strcase t_g) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD"))) 
+                        (progn 
+                          (setq pz (if (and v_l (/= v_l "")) (distof v_l) 1.0)) 
+                          (if (and (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (> pz 1.0)) (setq ft (+ (- ft 1.0) pz))) 
+                          (if (and (wcmatch (strcase n) "*CONDULETA*") (not (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")) (> pz 1.0)) (setq fc (+ (- fc 1.0) pz)))
+                        )
+                      )
+                      (if c_i 
+                        (progn 
+                          (setq er (EX_PIB t_g v_l) tc (vlax-get-property xs 'Range (strcat (EX_GEX (1+ c_i)) (itoa r)))) 
+                          (if (not (vl-catch-all-error-p er)) 
+                            (cond 
+                              ((= (car er) "TXT") (vlax-put-property tc 'Value2 (cadr er))) 
+                              ((= (car er) "NUM") (vlax-put-property tc 'Value2 (cadr er))) 
+                              ((= (car er) "RAW") (vlax-put-property tc 'Value2 (cadr er))) 
+                              ((= (car er) "WIN") 
+                                (vlax-put-property tc 'Value2 (cadr er)) 
+                                (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX mi) (itoa r))) 'Value2 (caddr er)) 
+                                (setq hm T)
+                              )
+                            )
+                          )
+                        )
+                      )
+                    )
+                    (setq r (1+ r))
+                  )
+                )
+                (setq i (1+ i))
+              )
               (vl-catch-all-apply 'vlax-invoke (list (vlax-get-property (vlax-get-property xs 'Range "A1") 'CurrentRegion) 'AutoFilter))
               (vl-catch-all-apply 'vlax-invoke (list (vlax-get-property xs 'UsedRange) 'Sort (vlax-get-property xs 'Range "A2") 1))
               (setq cr (+ r 2))
@@ -140,4 +172,4 @@
   (if (and df (vl-file-size df)) (vl-file-delete df)) (princ)
 )
 
-(princ "\n--- CARGADO EXCEL v8.8.3 [ANTI-ERROR IN] ---") (princ)
+(princ "\n--- CARGADO EXCEL v8.8.4 [ANTI-ERROR IN] ---") (princ)

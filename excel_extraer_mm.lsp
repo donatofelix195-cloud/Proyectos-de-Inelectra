@@ -46,7 +46,7 @@
     (if (not (member n ty)) (setq ty (append ty (list n)))) (setq i (1+ i))
   )
   (foreach b_n ty (setq b_o (GetBattmanOrder b_n)) (foreach t_g b_o (if (not (member t_g t_s)) (setq t_s (append t_s (list t_g))))))
-  (setq xa (vlax-get-or-create-object "Excel.Application")) (vla-put-Visible xa :vlax-true)
+  (setq xa (vlax-get-or-create-object "Excel.Application")) (vlax-put-property xa 'Visible :vlax-true)
   (setq xb (vlax-invoke-method (vlax-get-property xa 'Workbooks) 'Add) xs (vlax-get-property xb 'ActiveSheet))
   (setq c 1)
   (foreach h t_s
@@ -102,12 +102,12 @@
            (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Metros Totales (MT)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "/1000")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
            (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Piezas Estimadas (3mts)") (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 2)) "/3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)))
   (vlax-invoke-method (vlax-get-property xs 'Columns) 'AutoFit)
-  (vlax-put-property (vlax-get-property xs 'Columns (GetColName mi)) 'Hidden :vlax-true)
+  (vlax-put-property (vlax-get-property xs 'Range (strcat (GetColName mi) ":" (GetColName mi))) 'Hidden :vlax-true)
 )
 
 ;; -- 4. INTERFAZ --
 (defun c:EXCEL_PRO ( / ss i e o n bl current df f id rs sb q c40 c41 ss_f)
-  (setq ss (ssget "X" '((0 . "INSERT"))))
+  (setq ss (ssget "X" '((0 . "INSERT") (410 . "Model"))))
   (if (not ss) (progn (alert "No blocks.") (exit)))
   (setq bl '() i 0 q (chr 34) c40 (chr 40) c41 (chr 41))
   (repeat (sslength ss)
@@ -129,4 +129,4 @@
   (if (and df (vl-file-size df)) (vl-file-delete df)) (princ)
 )
 
-(princ "\n--- EXCEL PRO v8.8.3 [FORMULAS Y AUTOFIT] ---") (princ)
+(princ "\n--- EXCEL PRO v8.8.5 [FORMULAS Y AUTOFIT] ---") (princ)

@@ -144,7 +144,7 @@
   (setq i 1) (repeat 5 (SetUltraSmartAttr tag_obj (strcat "CABLE_TIPO_" (itoa i)) "") (SetUltraSmartAttr tag_obj (strcat "CANTIDAD_" (itoa i)) "") (setq i (1+ i)))
   (setq i 1) (foreach cb tl (SetUltraSmartAttr tag_obj (strcat "CABLE_TIPO_" (itoa i)) cb) (setq i (1+ i)))
   (setq i 1) (foreach qt cl (SetUltraSmartAttr tag_obj (strcat "CANTIDAD_" (itoa i)) qt) (setq i (1+ i)))
-  (SetVisibilityState tag_obj (strcat "CB" (itoa (length tl))))
+  (vl-catch-all-apply 'SetVisibilityState (list tag_obj (strcat "CB" (itoa (length tl)))))
   (if (and parent_h (/= parent_h "")) (progn (SetXDataHandle (vlax-vla-object->ename tag_obj) parent_h) (SetUltraSmartAttr tag_obj "HANDLE" parent_h)))
   (vla-update tag_obj))
 
@@ -291,21 +291,42 @@
 )
 
 ;; --- 6. COMANDOS ---
-(defun c:ETIQUETAR (/ ent obj data ins blk_name) 
+(defun c:ETIQUETAR (/ ent obj data ins opt p1 p2) 
   (vl-load-com) 
-  (initget "Bandeja Area")
-  (setq blk_name (cond ((getkword "\nTipo de etiqueta [Bandeja/Area] <Bandeja>: ")) ("Bandeja")))
-  (setq blk_name (if (= blk_name "Bandeja") "band" "AREA_IDENT"))
+  (initget "Bandera Area AMbos")
+  (setq opt (cond ((getkword "\nTipo de etiqueta [Bandera/Area/AMbos] <Bandera>: ")) ("Bandera")))
   (if (setq ent (car (entsel "\nSELECCIONE CONDUCTO ORIGEN: "))) 
     (progn 
       (setq obj (GetBlockRef ent) data (GetConduitData obj)) 
       (if (and (= (getvar "TILEMODE") 0) (> (getvar "CVPORT") 1)) (command "_.PSPACE")) 
       (if (setq ins (getpoint "\nCLIC PARA INSERTAR ETIQUETA: ")) 
-        (if (tblsearch "BLOCK" blk_name) 
-          (progn 
-            (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) blk_name 1 1 1 0) data) 
-            (princ "\n>>> VINCULADO Y ACTUALIZADO <<<")) 
-          (alert (strcat "Falta el bloque: " blk_name)))))) (princ))
+        (cond 
+          ((= opt "Bandera")
+           (if (tblsearch "BLOCK" "band")
+             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "band" 1 1 1 0) data)
+             (alert "Falta el bloque: band")))
+          ((= opt "Area")
+           (if (tblsearch "BLOCK" "AREA_IDENT")
+             (ApplyDataToTag (vla-InsertBlock (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" 1 1 1 0) data)
+             (alert "Falta el bloque: AREA_IDENT")))
+          ((= opt "AMbos")
+           (if (and (tblsearch "BLOCK" "band") (tblsearch "BLOCK" "AREA_IDENT"))
+             (progn 
+               ;; 1. Primero insertar el Area en el punto clicado (ins)
+               (setq p2_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" 1 1 1 0)))
+               (if (not (vl-catch-all-error-p p2_obj)) (ApplyDataToTag p2_obj data))
+               
+               ;; 2. Luego insertar la Bandera a su derecha: +9 en X y bajamos -3.5 en Y para que el círculo de ins quede al centro de la tabla
+               (setq p1 (list (+ (car ins) 9.0) (- (cadr ins) 3.5) (caddr ins)))
+               (setq p1_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point p1) "band" 1 1 1 0)))
+               (if (not (vl-catch-all-error-p p1_obj)) (ApplyDataToTag p1_obj data))
+               
+               (princ "\n>>> AMBOS INSERTADOS Y VINCULADOS <<<"))
+             (alert "Error: Los bloques 'band' y 'AREA_IDENT' deben existir al mismo tiempo.")))
+        )
+      )
+    )
+  ) (princ))
 
 (defun c:DASHBOARD () (vl-load-com) (if (setq e (nentselp "\nSeleccione conducto: ")) (progn (setq obj (GetBlockRef e)) (if (/= (FindUltraSmartAttr obj "DIAMETRO") "") (InternalCablePicker obj) (alert "No es conducto."))) (princ "\nCancelado.")) (princ))
 (defun c:SYNC_TAG () (vl-load-com) (if (setq ent (car (entsel "\nSELECCIONE ETIQUETA: "))) (progn (setq obj (GetBlockRef ent)) (if (setq src (car (entsel "\nSELECCIONE CONDUCTO: "))) (ApplyDataToTag obj (GetConduitData (GetBlockRef src))) (princ "\nCancelado."))) (princ)) (princ))

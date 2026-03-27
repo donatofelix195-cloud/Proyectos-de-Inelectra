@@ -1,5 +1,5 @@
-;;; --- ETIQUETA PAPERSPACE v118.79 (MASTER SUITE) ---
-;;; v118.79: Soporte de Coordenadas Gigantes en ModelSpace y Penetración PSPACE
+;;; --- Dashboard Pro v119.9.1 (PSPACE) ---
+;;; v119.9.1: Busqueda Real Heuristica, Auto N/A, Blindaje 39% y UI ASCII.
   
 ;; --- 1. BASES DE DATOS DE CABLES ---
 (setq *MARLEW_DATA* '(
@@ -81,6 +81,20 @@
 
 (defun SetXDataHandle (en h / res) (regapp "MARLEW_LINK") (entmod (append (entget en) (list (list -3 (list "MARLEW_LINK" (cons 1000 h)))))))
 (defun GetXDataHandle (en / xd) (if (and (setq xd (assoc -3 (entget en '("MARLEW_LINK")))) (cadr xd) (cadadr xd)) (cdr (cadadr xd)) ""))
+
+(defun IncrementTag (str / i len num_str prefix num padding c)
+  (setq len (strlen str) i len num_str "")
+  (while (and (> i 0) (<= 48 (ascii (setq c (substr str i 1)))) (>= 57 (ascii c)))
+    (setq num_str (strcat c num_str) i (1- i)))
+  (if (> (strlen num_str) 0)
+    (progn
+      (setq prefix (substr str 1 i) num (1+ (atoi num_str)) padding "")
+      (while (< (strlen padding) (- (strlen num_str) (strlen (itoa num)))) (setq padding (strcat padding "0")))
+      (strcat prefix padding (itoa num))
+    )
+    (if (= str "") "01" (strcat str "-01"))
+  )
+)
 
 ;; --- 3. MAPEADO INTELIGENTE ---
 (defun FindUltraSmartAttr (en base_tag / tags res i_num)
@@ -169,8 +183,43 @@
 
 (setq *CLONE_MODE* nil)
 
+(if (not *ULTIMO_TRAMO_ASIGNADO*) (setq *ULTIMO_TRAMO_ASIGNADO* "N/A"))
+
 ;; --- 5. DASHBOARD ---
-(defun InternalCablePicker (en / dcl_id dcl_file f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop obj_copy old_err cur_elev cats RefreshList update_oc data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id f_c f_q f_oc f_d f_e f_id cur_hand final_data ss_f j en_f obj_f bn_f UpdateData ent_pull sub_loop cur_ent)
+(defun InternalCablePicker (en / dcl_file dcl_id f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop obj_copy old_err cur_elev cats RefreshList update_oc data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id f_c f_q f_oc f_d f_e f_id cur_hand final_data ss_f j en_f obj_f bn_f UpdateData ent_pull sub_loop cur_ent s_val info_label ss_test existe_real max_tag val_tag)
+  
+  ;; --- 1. MOTOR DE BUSQUEDA REAL (Sincronizacion Profunda) ---
+  (setq existe_real nil max_tag nil)
+  (setq ss_test (ssget "_X" '((0 . "INSERT") (66 . 1))))
+  
+  (if ss_test
+      (progn
+        (setq j 0)
+        (repeat (sslength ss_test)
+          (setq en_f (ssname ss_test j))
+          (setq val_tag (FindUltraSmartAttr en_f "TAG"))
+          
+          ;; Verificamos si nuestra memoria todavia existe en el dibujo
+          (if (and *ULTIMO_TRAMO_ASIGNADO* (= (CleanTag val_tag) (CleanTag *ULTIMO_TRAMO_ASIGNADO*)))
+              (setq existe_real t))
+          
+          ;; Aprovechamos el escaneo para buscar el numero mas alto por si el anterior murio
+          (if (and (/= val_tag "N/A") (/= val_tag ""))
+              (if (or (not max_tag) (> (atof (vl-string-right-trim " " (vl-string-left-trim "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-" val_tag))) 
+                                       (atof (vl-string-right-trim " " (vl-string-left-trim "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-" max_tag)))))
+                  (setq max_tag val_tag)))
+          (setq j (1+ j))))
+  )
+
+  ;; Si el bloque de la memoria NO existe, saltamos al mas alto encontrado en el dibujo
+  (if (not existe_real)
+      (if max_tag 
+          (setq *ULTIMO_TRAMO_ASIGNADO* max_tag)
+          (setq *ULTIMO_TRAMO_ASIGNADO* "N/A"))
+  )
+
+  (setq info_label (if (and *ULTIMO_TRAMO_ASIGNADO* (/= *ULTIMO_TRAMO_ASIGNADO* "N/A")) *ULTIMO_TRAMO_ASIGNADO* "N/A"))
+
   (if *CLONE_MODE* (progn (princ "\n>>> Dashboard ya abierto. <<<") (setq *CLONE_MODE* nil) (princ))) 
   (setq *CLONE_MODE* t *DBLCLK_BACKUP* (getvar "DBLCLKEDIT")) (setvar "DBLCLKEDIT" 0)
   
@@ -179,6 +228,7 @@
                   (if (and dcl_id (> dcl_id 0)) (unload_dialog dcl_id))
                   (setvar "DBLCLKEDIT" *DBLCLK_BACKUP*)
                   (setq *CLONE_MODE* nil *error* old_err)
+                  (if (and dcl_file (findfile dcl_file)) (vl-file-delete dcl_file))
                   (princ (strcat "\nError: " msg))))
 
   (setq diam_list '("3/4\"" "1\"" "1 1/2\"" "2\"") cats '("MARLEW" "Ekabel"))
@@ -196,33 +246,46 @@
 
   (setq cur_diam (FindUltraSmartAttr en "DIAMETRO")) (if (= cur_diam "") (setq cur_diam "3/4\""))
   (setq raw_el (FindUltraSmartAttr en "ELEVACION") cur_elev raw_el) (if (wcmatch cur_elev "EL. +*") (setq cur_elev (substr cur_elev 6)))
-  (setq cur_id (FindUltraSmartAttr en "TAG"))
+  
+  ;; --- 2. AUTOMATIZACION DE VALOR INICIAL ---
+  (setq cur_id (vl-string-trim " " (FindUltraSmartAttr en "TAG")))
+  
+  ;; Si el bloque esta vacio o es nuevo, forzamos N/A si no hay memoria valida
+  (if (or (= cur_id "") (= cur_id "???"))
+      (if (and *ULTIMO_TRAMO_ASIGNADO* (/= *ULTIMO_TRAMO_ASIGNADO* "N/A"))
+          (setq cur_id (IncrementTag *ULTIMO_TRAMO_ASIGNADO*))
+          (setq cur_id "N/A")) ; <--- Aqui ocurre la magia del N/A automatico
+  )
+
   (setq i 1) (repeat 5 (set (read (strcat "cx" (itoa i))) (FindUltraSmartAttr en (strcat "CABLE_TIPO_" (itoa i)))) (set (read (strcat "qx" (itoa i))) (FindUltraSmartAttr en (strcat "CANTIDAD_" (itoa i)))) (setq i (1+ i)))
 
-  (setq dcl_file "C:/Users/Dfelix25046/Downloads/db.dcl" f (open dcl_file "w"))
-  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v118.79 Final)\";" f)
+  (setq dcl_file (vl-filename-mktemp "dashboard.dcl") f (open dcl_file "w"))
+  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v119.9 - Auto N/A Mode)\";" f)
   (write-line "  :column {" f)
-  (write-line "    :edit_box { key=\"id_box\"; label=\"ID:\"; }" f)
+  (write-line "    :boxed_column { label=\"Gestion de TAG y Tramo\";" f)
+  (write-line (strcat "      :text { key=\"last_info\"; label=\"ULTIMO DETECTADO EN PLANO: " info_label "\"; }") f)
+  (write-line "      :row { :edit_box { key=\"id_box\"; label=\"ID Actual:\"; edit_width=20; } :button { key=\"btn_inc\"; label=\"+1\"; width=4; } :button { key=\"btn_na\"; label=\"N/A\"; width=4; } }" f)
+  (write-line "    }" f)
   (write-line "    :row {" f)
-  (write-line "      :boxed_column { label=\"Catalogo\";" f)
+  (write-line "      :boxed_column { label=\"Catalogo de Cables\";" f)
   (write-line "        :popup_list { key=\"cat_pop\"; label=\"Fabricante:\"; }" f)
   (write-line "        :edit_box { key=\"f_edit\"; label=\"Filtro:\"; }" f)
   (write-line "        :list_box { key=\"l_box\"; height=15; width=30; }" f)
   (write-line "      }" f)
-  (write-line "      :boxed_column { label=\"Conducto\";" f)
-  (write-line "        :boxed_row { label=\"Propiedades\";" f)
+  (write-line "      :boxed_column { label=\"Datos del Conducto\";" f)
+  (write-line "        :boxed_row { label=\"Dimensiones\";" f)
   (write-line "          :popup_list { key=\"d_pop\"; label=\"D:\"; width=10; }" f)
   (write-line "          :edit_box { key=\"e_box\"; label=\"EL:\"; width=8; }" f)
   (write-line "        }" f)
   (foreach it '("1" "2" "3" "4" "5") 
     (write-line (strcat "        :row { :toggle { key=\"rb" it "\"; } :edit_box { key=\"c" it "\"; edit_width=20; } :edit_box { key=\"q" it "\"; edit_width=3; } }") f)
   )
-  (write-line "        :boxed_column { label=\"Resultado\";" f)
+  (write-line "        :boxed_column { label=\"Resultado de Ocupacion\";" f)
   (write-line "          :text { key=\"oc_tx\"; label=\"OCUPACION : 0.00%\"; }" f)
   (write-line "          :row { :button { key=\"btn_calc\"; label=\"CALCULAR\"; } :button { key=\"btn_copy\"; label=\"CLONAR\"; } }" f)
   (write-line "        }" f)
   (write-line "        :row {" f)
-  (write-line "          :button { key=\"accept\"; label=\"GUARDAR\"; is_default=true; }" f)
+  (write-line "          :button { key=\"accept\"; label=\"GUARDAR DATOS\"; is_default=true; }" f)
   (write-line "          :button { key=\"cancel\"; label=\"Cerrar\"; is_cancel=true; }" f)
   (write-line "        }" f)
   (write-line "      }" f)
@@ -242,12 +305,15 @@
         (set_tile (strcat "rb" cur_slot) "1") (UpdateData *ACTIVE_CATALOG_IDX*) (update_oc)
         (action_tile "cat_pop" "(UpdateData (atoi $value)) (update_oc)")
         (action_tile "d_pop" "(update_oc)")
+        (action_tile "btn_inc" "(set_tile \"id_box\" (IncrementTag (get_tile \"id_box\")))")
+        (action_tile "btn_na" "(set_tile \"id_box\" \"N/A\")")
         (action_tile "f_edit" "(progn (setq filtered *CABLE_DATA* s_val (strcase (get_tile \"f_edit\")) filtered (vl-remove-if-not '(lambda (x) (wcmatch (strcase (car x)) (strcat \"*\" s_val \"*\"))) filtered)) (RefreshList))")
         (action_tile "l_box" "(progn (set_tile (strcat \"c\" cur_slot) (car (nth (atoi $value) filtered))) (update_oc))")
         (foreach it '("1" "2" "3" "4" "5") (action_tile (strcat "rb" it) (strcat "(setq cur_slot \"" it "\")")) (action_tile (strcat "c" it) "(update_oc)") (action_tile (strcat "q" it) "(update_oc)"))
         (action_tile "btn_calc" "(update_oc)")
-        (action_tile "btn_copy" "(progn (setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (get_tile \"id_box\")) (done_dialog 2))")
-        (action_tile "accept" "(progn (setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (get_tile \"id_box\")) (if (>= oc_val 39.0) (alert (strcat \"OCUPACION: \" (rtos oc_val 2 2) \"% (LIMITE 39%)\")) (done_dialog 1)))")
+        
+        (action_tile "btn_copy" "(if (> oc_val 39.0) (alert \"ERROR DE INGENIERIA: La ocupacion excede el limite de 39%.\") (progn (setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (vl-string-trim \" \" (get_tile \"id_box\"))) (if (or (= f_id \"\") (= f_id \" \")) (setq f_id \"N/A\")) (if (and (/= f_id \"\") (/= (strcase f_id) \"N/A\")) (setq *ULTIMO_TRAMO_ASIGNADO* f_id)) (done_dialog 2)))")
+        (action_tile "accept" "(if (> oc_val 39.0) (alert \"ERROR DE INGENIERIA: La ocupacion excede el limite de 39%.\") (progn (setq f_c (list (get_tile \"c1\") (get_tile \"c2\") (get_tile \"c3\") (get_tile \"c4\") (get_tile \"c5\")) f_q (list (get_tile \"q1\") (get_tile \"q2\") (get_tile \"q3\") (get_tile \"q4\") (get_tile \"q5\")) f_oc (rtos oc_val 2 2) f_d (nth (atoi (get_tile \"d_pop\")) diam_list) f_e (get_tile \"e_box\") f_id (vl-string-trim \" \" (get_tile \"id_box\"))) (if (or (= f_id \"\") (= f_id \" \")) (setq f_id \"N/A\")) (if (and (/= f_id \"\") (/= (strcase f_id) \"N/A\")) (setq *ULTIMO_TRAMO_ASIGNADO* f_id)) (done_dialog 1)))")
         (setq st (start_dialog)) (unload_dialog dcl_id)
         (if (= st 2) 
           (progn 
@@ -297,55 +363,68 @@
       T) nil)
   (setvar "DBLCLKEDIT" *DBLCLK_BACKUP*) (setq *CLONE_MODE* nil) (setq *error* old_err) (princ))
 
-(defun DoubleClickCallback (reactor info / pt ent obj found ss px_ratio delta pt1 pt2 i)
+(defun DoubleClickCallback (reactor info / pt ent obj found ss px_ratio i err min_p max_p tol bbox_err)
   (setq found nil)
-  ;; 0. PickFirst Iterativo (Escanea todo lo preseleccionado)
-  (if (setq ss (cadr (ssgetfirst)))
-    (progn
-      (setq i 0)
-      (while (and (not found) (< i (sslength ss)))
-        (setq obj (vlax-ename->vla-object (ssname ss i)))
-        (if (and (= (vla-get-ObjectName obj) "AcDbBlockReference") (/= (FindUltraSmartAttr obj "DIAMETRO") ""))
-          (progn (InternalCablePicker obj) (setq found t))
-        )
-        (setq i (1+ i))
-      )
-    )
-  )
-  ;; 1. Fallback Geométrico (nentselp clásico)
-  (if (not found)
-    (progn 
-      (setq pt (car info))
-      (if (setq ent (nentselp pt))
-        (if (setq obj (GetBlockRef ent))
-          (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
-            (progn (InternalCablePicker obj) (setq found t))
+  
+  (setq err (vl-catch-all-apply
+    '(lambda ()
+      ;; 0. PickFirst Iterativo
+      (if (setq ss (cadr (ssgetfirst)))
+        (progn
+          (setq i 0)
+          (while (and (not found) (< i (sslength ss)))
+            (setq obj (vlax-ename->vla-object (ssname ss i)))
+            (if (and (= (vla-get-ObjectName obj) "AcDbBlockReference") (/= (FindUltraSmartAttr obj "DIAMETRO") ""))
+              (progn (InternalCablePicker obj) (setq found t))
+            )
+            (setq i (1+ i))
           )
         )
       )
-      ;; 2. Caja de Apertura Iterativa (Atrapa todos los bloques bajo el clic y los analiza)
+      
+      ;; 1. Fallback nentselp
       (if (not found)
-        (progn
-          (setq px_ratio (/ (getvar "VIEWSIZE") (cadr (getvar "SCREENSIZE"))))
-          (setq delta (* (getvar "PICKBOX") px_ratio 3.0)) ; Cobertura triple de holgura
-          (setq pt1 (list (- (car pt) delta) (- (cadr pt) delta))) ; Punto 2D para Crossing Window infinto
-          (setq pt2 (list (+ (car pt) delta) (+ (cadr pt) delta))) ; Punto 2D para Crossing Window infinto
-          (if (setq ss (ssget "C" pt1 pt2 '((0 . "INSERT"))))
-            (progn
-              (setq i 0)
-              (while (and (not found) (< i (sslength ss)))
-                (setq obj (vlax-ename->vla-object (ssname ss i)))
-                (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
-                  (progn (InternalCablePicker obj) (setq found t))
+        (progn 
+          (setq pt (car info))
+          (if (setq ent (nentselp pt))
+            (if (setq obj (GetBlockRef ent))
+              (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
+                (progn (InternalCablePicker obj) (setq found t))
+              )
+            )
+          )
+          
+          ;; 2. Bounding Box Crudo Matemático (Anti-Glitches Georeferenciados)
+          (if (not found)
+            (if (setq ss (ssget "X" '((0 . "INSERT"))))
+              (progn
+                (setq i 0)
+                (while (and (not found) (< i (sslength ss)))
+                  (setq obj (vlax-ename->vla-object (ssname ss i)))
+                  (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
+                    (progn
+                      (setq bbox_err (vl-catch-all-apply 'vla-GetBoundingBox (list obj 'min_pt 'max_pt)))
+                      (if (not (vl-catch-all-error-p bbox_err))
+                        (progn
+                          (setq min_p (vlax-safearray->list min_pt) max_p (vlax-safearray->list max_pt))
+                          (setq tol (* (getvar "VIEWSIZE") 0.05))
+                          (if (and (>= (car pt) (- (car min_p) tol)) (<= (car pt) (+ (car max_p) tol))
+                                   (>= (cadr pt) (- (cadr min_p) tol)) (<= (cadr pt) (+ (cadr max_p) tol)))
+                            (progn (InternalCablePicker obj) (setq found t))
+                          )
+                        )
+                      )
+                    )
+                  )
+                  (setq i (1+ i))
                 )
-                (setq i (1+ i))
               )
             )
           )
         )
       )
     )
-  )
+  ))
   (princ)
 )
 

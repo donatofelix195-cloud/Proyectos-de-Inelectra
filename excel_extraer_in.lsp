@@ -1,5 +1,5 @@
-;;; --- EXCEL PRO v8.8.4 (IMPERIAL) ---
-;;; v8.8.4: Reemplazo absoluto de todo prefijo 'vla-' por 'vlax-put-property'.
+;;; --- EXCEL PRO v9.6.0 (IMPERIAL) ---
+;;; v9.6.0: ScreenUpdating Fix, AutoFit Cells, Reductores PRO.
 
 (vl-load-com)
 
@@ -27,8 +27,16 @@
     (cond 
       ((member (strcase tg) '("LONGITUD" "L" "LEN" "LENGTH" "LONG"))
        (setq m n) (if (< m 39.37) (setq m 39.37) (setq m (* (fix (+ (/ m 39.37) 0.5)) 39.37)))
-       (setq r (list "WIN" m m)))
-      ((or (wcmatch (strcase tg) "*DIAM*") (member (strcase tg) '("D" "DIA" "DIAMETRO"))) (setq r (list "TXT" (strcat (rtos n 2 2) q))))
+       (setq r (list "WIN" (strcat (itoa (fix (/ m 12))) "'- " (itoa (rem (fix m) 12)) "\"") m)))
+      ((or (wcmatch (strcase tg) "*DIAM*") (wcmatch (strcase tg) "*REDUC*") (member (strcase tg) '("D" "DIA" "DIAMETRO")))
+       (setq r (list "TXT" 
+         (cond 
+           ((equal n 0.75 0.01) "3/4\"")
+           ((equal n 1.0 0.01)  "1\"")
+           ((equal n 1.5 0.01)  "1 1/2\"")
+           ((equal n 2.0 0.01)  "2\"")
+           (t (strcat (rtos n 2 2) q))
+         ))))
       ((member (strcase tg) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD")) (setq r (list "NUM" (fix (+ n 0.999999)))))
       (t (setq r (list "NUM" n)))
     )
@@ -38,13 +46,13 @@
 
 ;; --- MOTOR DE REPORTES (FRAGMENTADO PARA ESTABILIDAD) ---
 
-(defun EX_AnexoTEE (xs cr ft / tn rt tc)
-  (setq tn (fix ft) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
+(defun EX_AnexoTEE (xs cr rs / rt tc)
+  (setq rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa cr))) 'Value2 "--- ANEXO: ACCESORIOS TEE ---")
   (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823)
   (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Extraido")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Value2 tn) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," rs ")")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Calculo 60% TEE")
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 1)) "*0.6,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Calculo 40% TB")
@@ -52,13 +60,13 @@
   (+ cr 5)
 )
 
-(defun EX_AnexoCond (xs cr fc / tn rt tc)
-  (setq tn (fix fc) rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
+(defun EX_AnexoCond (xs cr rs / rt tc)
+  (setq rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa cr))) 'Value2 "--- ANEXO: CONDULETAS ---")
   (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823)
   (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Extraidas")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Value2 tn) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," rs ")")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "LR (30%)")
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=ROUND(C" (itoa (+ cr 1)) "*0.3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "LB (30%)")
@@ -68,20 +76,25 @@
   (+ cr 6)
 )
 
-(defun EX_AnexoPipe (xs cr rs mi / rt tc)
+(defun EX_AnexoPipe (xs cr rs mi / rt tc r1)
   (setq rt (vlax-get-property xs 'Range (strcat "B" (itoa cr) ":C" (itoa cr))))
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa cr))) 'Value2 "--- ANEXO: CONDUIT ---")
   (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823)
   (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
+  
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 1)))) 'Value2 "Total Pulgadas (IN)")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," rs ")")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
-  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Metros Totales (MT)")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "*0.0254")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
-  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Total Pies (FT)")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "/12")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  (setq r1 (+ cr 1))
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa r1)))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," rs ")")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "Metraje (FT'-IN\")")
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=INT(C" (itoa r1) "/12) & \"'- \" & MOD(C" (itoa r1) ",12) & \"\"\"\"")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "Metros Totales (MT)")
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa r1) "*0.0254")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "Piezas Estimadas (3mts)")
-  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 2)) "/3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
-  (+ cr 5)
+  (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vlax-put-property tc 'Formula (strcat "=ROUNDUP(C" (itoa (+ cr 3)) "/3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
+  (+ cr 6)
 )
 
 ;; --- COMANDO PRINCIPAL ---
@@ -118,8 +131,7 @@
                 (if (member n sb) 
                   (progn 
                     (vl-catch-all-apply 'vlax-put-property (list (vlax-get-property xs 'Range (strcat "A" (itoa r))) 'Value2 n))
-                    (if (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (setq ft (+ ft 1.0)) (if (wcmatch (strcase n) "*CONDULETA*") (setq fc (+ fc 1.0))))
-                    (setq ra '()) 
+                    (setq ra '() pz 1.0) 
                     (if (and (vlax-property-available-p o 'HasAttributes) (= (vla-get-HasAttributes o) :vlax-true)) 
                       (foreach at (vlax-invoke o 'GetAttributes) (setq ra (cons (cons (vla-get-TagString at) (vla-get-TextString at)) ra)))
                     )
@@ -127,11 +139,7 @@
                     (foreach ap ra 
                       (setq t_g (car ap) v_l (cdr ap) c_i (vl-position t_g t_s))
                       (if (and c_i (member (strcase t_g) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD"))) 
-                        (progn 
-                          (setq pz (if (and v_l (/= v_l "")) (distof v_l) 1.0)) 
-                          (if (and (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*") (> pz 1.0)) (setq ft (+ (- ft 1.0) pz))) 
-                          (if (and (wcmatch (strcase n) "*CONDULETA*") (not (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")) (> pz 1.0)) (setq fc (+ (- fc 1.0) pz)))
-                        )
+                        (setq pz (if (and v_l (/= v_l "")) (distof v_l) 1.0))
                       )
                       (if c_i 
                         (progn 
@@ -151,6 +159,12 @@
                         )
                       )
                     )
+                    (if (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")
+                        (progn (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX 54) (itoa r))) 'Value2 pz) (setq ft (+ ft pz)))
+                        (if (wcmatch (strcase n) "*CONDULETA*")
+                            (progn (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX 55) (itoa r))) 'Value2 pz) (setq fc (+ fc pz)))
+                        )
+                    )
                     (setq r (1+ r))
                   )
                 )
@@ -159,10 +173,19 @@
               (vl-catch-all-apply 'vlax-invoke (list (vlax-get-property (vlax-get-property xs 'Range "A1") 'CurrentRegion) 'AutoFilter))
               (vl-catch-all-apply 'vlax-invoke (list (vlax-get-property xs 'UsedRange) 'Sort (vlax-get-property xs 'Range "A2") 1))
               (setq cr (+ r 2))
-              (if (> ft 0.0) (setq cr (EX_AnexoTEE xs cr ft)))
-              (if (> fc 0.0) (setq cr (EX_AnexoCond xs cr fc)))
+              (if (> ft 0.0) (setq cr (EX_AnexoTEE xs cr (strcat (EX_GEX 54) "2:" (EX_GEX 54) (itoa (1- r))))))
+              (if (> fc 0.0) (setq cr (EX_AnexoCond xs cr (strcat (EX_GEX 55) "2:" (EX_GEX 55) (itoa (1- r))))))
               (if hm (progn (setq range_str (strcat (EX_GEX mi) "2:" (EX_GEX mi) (itoa (1- r)))) (setq cr (EX_AnexoPipe xs cr range_str mi))))
-              (vlax-invoke-method (vlax-get-property xs 'Columns) 'AutoFit) (princ "\n>>> BOM IN GENERADA <<<")
+              
+              ;; Forzar actualizacion y expansion total
+              (vlax-put-property xa 'ScreenUpdating :vlax-true)
+              (vlax-invoke-method (vlax-get-property (vlax-get-property xs 'Cells) 'Columns) 'AutoFit)
+              
+              ;; Ocultar columnas de calculo con proteccion de error
+              (vl-catch-all-apply 'vlax-put-property 
+                (list (vlax-get-property xs 'Range (strcat (EX_GEX mi) ":" (EX_GEX 55))) 'Hidden :vlax-true))
+              
+              (princ "\n>>> BOM GENERADA CON EXPANSIÓN TOTAL (v9.6.0) <<<")
             )
           )
         )
@@ -172,4 +195,4 @@
   (if (and df (vl-file-size df)) (vl-file-delete df)) (princ)
 )
 
-(princ "\n--- CARGADO EXCEL v8.8.4 [ANTI-ERROR IN] ---") (princ)
+(princ "\n--- EXCEL PRO v9.6.0 [IMPERIAL PRO] ---") (princ)

@@ -1,6 +1,7 @@
-;;; --- Dashboard Pro v119.9.1 (PSPACE) ---
-;;; v119.9.1: Busqueda Real Heuristica, Auto N/A, Blindaje 39% y UI ASCII.
-  
+;;; --- DASHBOARD CABLE MANAGEMENT PRO v120.0.1 ---
+;;; v120.0.1: Heuristic Shield (Blocks AutoCAD Handles), Tag Sanitizer v2,
+;;; v120.0.1: Pattern Match *-*-*, Silent Audit Points, Layer Status NA.
+;;; v120.0.1: 39% Occupancy Compliance & Heuristic Sequence Recovery.
 ;; --- 1. BASES DE DATOS DE CABLES ---
 (setq *MARLEW_DATA* '(
     ("10COND#12AWG" 19.30) ("10COND#14AWG" 17.30) ("10COND#16AWG" 15.00) ("10CT+PIT#16AWG" 28.00)
@@ -134,10 +135,31 @@
   (setq target (CleanTag diam_str)) 
   (cond ((wcmatch target "*11/2*") (setq d 40.9)) ((wcmatch target "*3/4*") (setq d 20.9)) ((wcmatch target "*2*") (setq d 52.5)) ((wcmatch target "*1*") (setq d 26.6)) (t (setq d 20.9))) (* pi (/ (expt d 2) 4.0)))
 
-(defun GetConduitData (obj / el diam i ca ta oc cl tl cv tv dc name)
+(defun GetConduitData (obj / el diam i ca ta oc cl tl cv tv dc name pos lay_obj)
   (setq el (FindUltraSmartAttr obj "ELEVACION")) (if (= el "") (setq el "0.00"))
   (setq diam (FindUltraSmartAttr obj "DIAMETRO")) (if (= diam "") (setq diam "3/4\""))
   (setq name (FindUltraSmartAttr obj "TAG"))
+  
+  ;; --- FILTRO DE INGENIERIA ESTRÍCTO v120.0.1 (Inelectra Standard) ---
+  ;; 1. Saneamiento Técnico (Limpia comentarios y basura visual)
+  (if (setq pos (vl-string-search "(" name)) (setq name (vl-string-right-trim " " (substr name 1 pos))))
+  (if (setq pos (vl-string-search " " name)) (setq name (substr name 1 pos)))
+  
+  ;; 2. Validación de Patrón y Visibilidad (Bloquea códigos internos ej. 57ADE4)
+  (setq lay_obj (vla-item (vla-get-Layers (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-Layer obj)))
+  (if (or (= name "") (= name ".") (= (strcase name) "S/T")
+          (wcmatch (strcase name) "*HIDDEN*") (wcmatch (strcase name) "*VISIBLE*")
+          (not (wcmatch (strcase name) "*-*-*")) ; <--- Exige formato B600-TS-001
+          (= (vla-get-LayerOn lay_obj) :vlax-false)
+          (= (vla-get-Freeze lay_obj) :vlax-true))
+      (progn
+        (setq name "N/A")
+        ;; --- REPARACIÓN PERMANENTE v120.0.1 ---
+        ;; Si el conducto tiene basura, forzamos N/A en su atributo físico
+        (SetUltraSmartAttr obj "TAG" "N/A")
+      )
+  )
+
   (foreach sym '("EL. +" "EL.+" "EL+" "+") (while (wcmatch el (strcat "*" sym "*")) (setq el (vl-string-subst "" sym el))))
   (setq el (vl-string-left-trim " " (vl-string-right-trim " " el)))
   (foreach sym '("%%C" "Ø") (while (wcmatch diam (strcat "*" sym "*")) (setq diam (vl-string-subst "" sym diam))))
@@ -188,7 +210,10 @@
 ;; --- 5. DASHBOARD ---
 (defun InternalCablePicker (en / dcl_file dcl_id f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop obj_copy old_err cur_elev cats RefreshList update_oc data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id f_c f_q f_oc f_d f_e f_id cur_hand final_data ss_f j en_f obj_f bn_f UpdateData ent_pull sub_loop cur_ent s_val info_label ss_test existe_real max_tag val_tag)
   
-  ;; --- 1. MOTOR DE BUSQUEDA REAL (Sincronizacion Profunda) ---
+  ;; --- 0. PURGA DE MEMORIA (v120.0.1) ---
+  ;; Si la memoria tiene basura de sesiones previas, la limpiamos a N/A
+  (if (and *ULTIMO_TRAMO_ASIGNADO* (not (wcmatch (strcase *ULTIMO_TRAMO_ASIGNADO*) "*-*-*")))
+      (setq *ULTIMO_TRAMO_ASIGNADO* "N/A"))
   (setq existe_real nil max_tag nil)
   (setq ss_test (ssget "_X" '((0 . "INSERT") (66 . 1))))
   
@@ -199,11 +224,15 @@
           (setq en_f (ssname ss_test j))
           (setq val_tag (FindUltraSmartAttr en_f "TAG"))
           
-          ;; Verificamos si nuestra memoria todavia existe en el dibujo
-          (if (and *ULTIMO_TRAMO_ASIGNADO* (= (CleanTag val_tag) (CleanTag *ULTIMO_TRAMO_ASIGNADO*)))
+          ;; --- FILTRO DE PROTECCIÓN HEURÍSTICA (v120.0.1) ---
+          ;; Ignoramos basura como handles (5800B4) o textos sin guiones
+          (if (not (wcmatch (strcase val_tag) "*-*-*")) (setq val_tag "N/A"))
+          
+          ;; Verificamos si nuestra memoria todavía existe en el dibujo
+          (if (and *ULTIMO_TRAMO_ASIGNADO* (/= *ULTIMO_TRAMO_ASIGNADO* "N/A") (= (CleanTag val_tag) (CleanTag *ULTIMO_TRAMO_ASIGNADO*)))
               (setq existe_real t))
           
-          ;; Aprovechamos el escaneo para buscar el numero mas alto por si el anterior murio
+          ;; Buscamos el número más alto solo entre TAGs válidos
           (if (and (/= val_tag "N/A") (/= val_tag ""))
               (if (or (not max_tag) (> (atof (vl-string-right-trim " " (vl-string-left-trim "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-" val_tag))) 
                                        (atof (vl-string-right-trim " " (vl-string-left-trim "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-" max_tag)))))
@@ -247,20 +276,17 @@
   (setq cur_diam (FindUltraSmartAttr en "DIAMETRO")) (if (= cur_diam "") (setq cur_diam "3/4\""))
   (setq raw_el (FindUltraSmartAttr en "ELEVACION") cur_elev raw_el) (if (wcmatch cur_elev "EL. +*") (setq cur_elev (substr cur_elev 6)))
   
-  ;; --- 2. AUTOMATIZACION DE VALOR INICIAL ---
+  ;; --- 2. AUTOMATIZACION DE VALOR INICIAL (v120.0.1) ---
   (setq cur_id (vl-string-trim " " (FindUltraSmartAttr en "TAG")))
   
-  ;; Si el bloque esta vacio o es nuevo, forzamos N/A si no hay memoria valida
-  (if (or (= cur_id "") (= cur_id "???"))
-      (if (and *ULTIMO_TRAMO_ASIGNADO* (/= *ULTIMO_TRAMO_ASIGNADO* "N/A"))
-          (setq cur_id (IncrementTag *ULTIMO_TRAMO_ASIGNADO*))
-          (setq cur_id "N/A")) ; <--- Aqui ocurre la magia del N/A automatico
-  )
+  ;; Si el bloque tiene basura (ID de autocad) o esta vacio, DEJAMOS N/A POR DEFECTO
+  (if (or (= cur_id "") (= cur_id "???") (not (wcmatch (strcase cur_id) "*-*-*"))) 
+      (setq cur_id "N/A"))
 
   (setq i 1) (repeat 5 (set (read (strcat "cx" (itoa i))) (FindUltraSmartAttr en (strcat "CABLE_TIPO_" (itoa i)))) (set (read (strcat "qx" (itoa i))) (FindUltraSmartAttr en (strcat "CANTIDAD_" (itoa i)))) (setq i (1+ i)))
 
   (setq dcl_file (vl-filename-mktemp "dashboard.dcl") f (open dcl_file "w"))
-  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v119.9 - Auto N/A Mode)\";" f)
+  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v120.0.1 - Inelectra Standard)\";" f)
   (write-line "  :column {" f)
   (write-line "    :boxed_column { label=\"Gestion de TAG y Tramo\";" f)
   (write-line (strcat "      :text { key=\"last_info\"; label=\"ULTIMO DETECTADO EN PLANO: " info_label "\"; }") f)
@@ -305,7 +331,11 @@
         (set_tile (strcat "rb" cur_slot) "1") (UpdateData *ACTIVE_CATALOG_IDX*) (update_oc)
         (action_tile "cat_pop" "(UpdateData (atoi $value)) (update_oc)")
         (action_tile "d_pop" "(update_oc)")
-        (action_tile "btn_inc" "(set_tile \"id_box\" (IncrementTag (get_tile \"id_box\")))")
+        (action_tile "btn_inc" (strcat "(progn (setq val_inc (get_tile \"id_box\")) "
+                                       "(if (or (= (strcase val_inc) \"N/A\") (= val_inc \"\") (= val_inc \"???\")) "
+                                       "    (setq val_base (if (and *ULTIMO_TRAMO_ASIGNADO* (/= *ULTIMO_TRAMO_ASIGNADO* \"N/A\")) *ULTIMO_TRAMO_ASIGNADO* \"A000-XX-000\")) "
+                                       "    (setq val_base val_inc)) "
+                                       "(set_tile \"id_box\" (IncrementTag val_base)))"))
         (action_tile "btn_na" "(set_tile \"id_box\" \"N/A\")")
         (action_tile "f_edit" "(progn (setq filtered *CABLE_DATA* s_val (strcase (get_tile \"f_edit\")) filtered (vl-remove-if-not '(lambda (x) (wcmatch (strcase (car x)) (strcat \"*\" s_val \"*\"))) filtered)) (RefreshList))")
         (action_tile "l_box" "(progn (set_tile (strcat \"c\" cur_slot) (car (nth (atoi $value) filtered))) (update_oc))")
@@ -351,6 +381,14 @@
       (setq i 1) (foreach v f_q (SetUltraSmartAttr en (strcat "CANTIDAD_" (itoa i)) v) (setq i (1+ i))) 
       (SetUltraSmartAttr en "PORCENTAJE" (strcat f_oc "%")) (SetUltraSmartAttr en "DIAMETRO" f_d) 
       (SetUltraSmartAttr en "ELEVACION" (strcat "EL. +" f_e)) (SetUltraSmartAttr en "TAG" f_id)
+      
+      ;; --- SILENT VISUAL AUDIT ---
+      (setq aud_lay (if (or (= (strcase f_id) "N/A") (= f_id "")) "_AUDIT_NA" "_AUDIT_TAGS"))
+      (if (not (tblsearch "LAYER" aud_lay)) (entmake (list '(0 . "LAYER") '(100 . "AcDbSymbolTableRecord") '(100 . "AcDbLayerTableRecord") (cons 2 aud_lay) '(70 . 0) (cons 62 (if (= aud_lay "_AUDIT_NA") 1 3)))))
+      (setq ip (vlax-get (if (= (type en) 'ENAME) (vlax-ename->vla-object en) en) 'InsertionPoint))
+      (entmake (list '(0 . "POINT") (cons 10 ip) (cons 8 aud_lay)))
+      (princ (strcat "\n[LISTO]: Paper v120 generado como [" f_id "] y marcado en auditoria."))
+
       (setq final_data (GetConduitData (if (= (type en) 'ENAME) (vlax-ename->vla-object en) en)))
       (if (setq ss_f (ssget "X" '((0 . "INSERT"))))
         (progn (setq j 0) 
@@ -467,12 +505,25 @@
 
 (defun c:DASHBOARD () (vl-load-com) (if (setq e (nentselp "\nSeleccione conducto: ")) (progn (setq obj (GetBlockRef e)) (if (/= (FindUltraSmartAttr obj "DIAMETRO") "") (InternalCablePicker obj) (alert "No es conducto."))) (princ "\nCancelado.")) (princ))
 (defun c:SYNC_TAG () (vl-load-com) (if (setq ent (nentselp "\nSELECCIONE ETIQUETA: ")) (progn (setq obj (GetBlockRef ent)) (if (setq src (nentselp "\nSELECCIONE CONDUCTO: ")) (ApplyDataToTag obj (GetConduitData (GetBlockRef src))) (princ "\nCancelado."))) (princ)) (princ))
+(defun c:CLEAN_PLAN (/ ss i en obj name)
+  (vl-load-com)
+  (princ "\n>>> INICIANDO LIMPIEZA DE TRAMOS (Anti-Handles)... <<<")
+  (if (setq ss (ssget "X" '((0 . "INSERT"))))
+    (progn (setq i 0 j 0) (repeat (sslength ss) (setq en (ssname ss i) obj (vlax-ename->vla-object en))
+        (if (and (vlax-property-available-p obj 'HasAttributes) (= (vla-get-HasAttributes obj) :vlax-true))
+            (progn (setq name (FindUltraSmartAttr en "TAG"))
+              (if (and (/= name "") (/= (strcase name) "N/A") (not (wcmatch (strcase name) "*-*")))
+                  (progn (SetUltraSmartAttr en "TAG" "N/A") (vla-update obj) (setq j (1+ j)))))) (setq i (1+ i)))
+      (princ (strcat "\n>>> LIMPIEZA COMPLETADA. ELEMENTOS SANADOS: " (itoa j) " <<<")))
+    (princ "\nNo se encontraron bloques.")) (princ))
+
 (defun c:FIX_ALL_CONDUITS () (vl-load-com) (if (setq ss (ssget "X" '((0 . "INSERT")))) (progn (setq i 0) (repeat (sslength ss) (setq en (ssname ss i) obj (vlax-ename->vla-object en)) (if (/= (FindUltraSmartAttr en "DIAMETRO") "") (ApplyDataToTag obj (GetConduitData en))) (setq i (1+ i))) (princ (strcat "\n>>> ACTUALIZADOS (" (itoa i) ") <<<"))) (princ "\nSin bloques.")) (princ))
 
 (defun InitReactors () 
   (vl-load-com) 
   (foreach r (vlr-reactors :vlr-mouse-reactor) (foreach c (cdr r) (vlr-remove c)))
   (vlr-mouse-reactor "C" '((:vlr-beginDoubleClick . DoubleClickCallback)))
-  (princ "\n>>> GHOST LINK v118.79 FINAL CARGADO. <<<"))
+  (princ "\n>>> DASHBOARD MNGMT PRO v120.0.2 CARGADO. <<<")
+  (princ "\n>>> Use 'CLEAN_PLAN' para purgar IDs internos de AutoCAD. <<<"))
 
 (InitReactors) (princ)

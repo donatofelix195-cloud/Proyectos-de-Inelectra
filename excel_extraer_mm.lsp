@@ -1,6 +1,6 @@
-;;; --- EXTRACTOR DE EXCEL v9.6.0 (METRIC - TOTAL PRO) ---
-;;; v9.6.0: ScreenUpdating Fix, AutoFit Global, Reductores PRO.
-;;; v9.6.0: Soporte Multinstancia con Workbooks.Add.
+;;; --- EXTRACTOR DE EXCEL v9.7.0 (METRIC - TOTAL PRO) ---
+;;; v9.7.0: Tag Sanitizer, Reductores PRO, Metraje Universal, AutoFit.
+;;; v9.7.0: Soporte Multinstancia con Workbooks.Add.
 
 (vl-load-com)
 
@@ -23,9 +23,20 @@
 )
 
 ;; -- 2. MOTOR EVALUADOR --
-(defun ProcessMetricBlock (tg vl / n q r m)
+(defun ProcessMetricBlock (tg vl / n q r m pos)
   (setq q (chr 34) r nil n (distof vl))
-  (if (and n (/= vl ""))
+  (if (or (member (strcase tg) '("TAG" "TRAMO" "ID")) (wcmatch (strcase tg) "*TRAMO*") (wcmatch (strcase tg) "*TAG*"))
+    (progn 
+      (if (setq pos (vl-string-search "(" vl)) (setq vl (vl-string-left-trim " " (substr vl 1 pos))))
+      (if (setq pos (vl-string-search " " vl)) (setq vl (substr vl 1 pos)))
+      (if (or (= vl "") (= vl ".") (= (strcase vl) "S/T")
+              (wcmatch (strcase vl) "*HIDDEN*") (wcmatch (strcase vl) "*VISIBLE*")
+              (not (wcmatch (strcase vl) "*-*-*")))
+          (setq vl "N/A"))
+      (setq r (list "TXT" vl))
+    )
+  )
+  (if (and (not r) n (/= vl ""))
     (cond 
       ((member (strcase tg) '("LONGITUD" "L" "LEN" "LENGTH" "LONG"))
        (setq m n) (if (< m 1000) (setq m 1000.0) (setq m (* (fix (+ (/ m 1000.0) 0.5)) 1000.0)))
@@ -42,7 +53,7 @@
       ((member (strcase tg) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD")) (setq r (list "NUM" (fix (+ n 0.999999)))))
       (t (setq r (list "NUM" n)))
     )
-    (if (or (wcmatch (strcase tg) "*DIAM*") (wcmatch vl (strcat "*" q "*"))) (setq r (list "TXT" (strcat "'" vl))) (setq r (list "RAW" vl)))
+    (if (not r) (if (or (wcmatch (strcase tg) "*DIAM*") (wcmatch vl (strcat "*" q "*"))) (setq r (list "TXT" (strcat "'" vl))) (setq r (list "RAW" vl))))
   ) r
 )
 
@@ -122,7 +133,7 @@
   (vl-catch-all-apply 'vlax-put-property 
     (list (vlax-get-property xs 'Range (strcat (GetColName mi) ":" (GetColName 55))) 'Hidden :vlax-true))
     
-  (princ "\n>>> BOM GENERADA CON EXPANSIÓN TOTAL (v9.6.0) <<<")
+  (princ "\n>>> BOM GENERADA CON EXPANSIÓN TOTAL (v9.7.0) <<<")
 )
 
 ;; -- 4. INTERFAZ --
@@ -149,4 +160,4 @@
   (if (and df (vl-file-size df)) (vl-file-delete df)) (princ)
 )
 
-(princ "\n--- EXCEL PRO v9.6.0 [METRICO PRO] ---") (princ)
+(princ "\n--- EXCEL PRO v9.7.0 [METRICO PRO] ---") (princ)

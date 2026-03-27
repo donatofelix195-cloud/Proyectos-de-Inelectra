@@ -1,5 +1,5 @@
-;;; --- EXCEL PRO v9.6.0 (IMPERIAL) ---
-;;; v9.6.0: ScreenUpdating Fix, AutoFit Cells, Reductores PRO.
+;;; --- EXCEL PRO v9.7.1 (IMPERIAL) ---
+;;; v9.7.1: Radical Handle Shield, Tag Sanitizer, Feet-Inches.
 
 (vl-load-com)
 
@@ -21,9 +21,26 @@
   r
 )
 
-(defun EX_PIB (tg vl / n q r m)
+(defun EX_PIB (tg vl / n q r m pos)
   (setq q (chr 34) r nil n (distof vl))
-  (if (and n (/= vl ""))
+  ;; --- MOTOR DE FILTRADO v9.7.1 (Anti-Basura Inelectra) ---
+  (if (or (member (strcase tg) '("TAG" "TRAMO" "ID" "IDENT" "IDENTIFICADOR" "ID_TRAMO" "ID_TAG" "T_CONDUIT" "HANDLE"))
+          (wcmatch (strcase tg) "*TRAMO*") (wcmatch (strcase tg) "*TAG*") (wcmatch (strcase tg) "*ID*"))
+    (progn
+      ;; Saneamiento: Eliminar comentarios en parentesis y espacios basura
+      (if (setq pos (vl-string-search "(" vl)) (setq vl (vl-string-right-trim " " (substr vl 1 pos))))
+      (if (setq pos (vl-string-search " " vl)) (setq vl (substr vl 1 pos)))
+      
+      ;; Bloqueo Radical: Si no tiene guion (como los handles 57AF85), se vuelve N/A
+      (if (or (= vl "") (= vl ".") (= (strcase vl) "S/T")
+              (wcmatch (strcase vl) "*HIDDEN*") (wcmatch (strcase vl) "*VISIBLE*")
+              (not (wcmatch (strcase vl) "*-*"))) ; <--- RIGOR: Exige al menos un guion
+          (setq vl "N/A"))
+      (setq r (list "TXT" vl))
+    )
+  )
+  
+  (if (and (not r) n (/= vl ""))
     (cond 
       ((member (strcase tg) '("LONGITUD" "L" "LEN" "LENGTH" "LONG"))
        (setq m n) (if (< m 39.37) (setq m 39.37) (setq m (* (fix (+ (/ m 39.37) 0.5)) 39.37)))
@@ -185,7 +202,7 @@
               (vl-catch-all-apply 'vlax-put-property 
                 (list (vlax-get-property xs 'Range (strcat (EX_GEX mi) ":" (EX_GEX 55))) 'Hidden :vlax-true))
               
-              (princ "\n>>> BOM GENERADA CON EXPANSIÓN TOTAL (v9.6.0) <<<")
+              (princ "\n>>> BOM GENERADA CON EXPANSIÓN TOTAL (v9.7.0) <<<")
             )
           )
         )
@@ -195,4 +212,4 @@
   (if (and df (vl-file-size df)) (vl-file-delete df)) (princ)
 )
 
-(princ "\n--- EXCEL PRO v9.6.0 [IMPERIAL PRO] ---") (princ)
+(princ "\n--- EXCEL PRO v9.7.1 [IMPERIAL PRO] ---") (princ)

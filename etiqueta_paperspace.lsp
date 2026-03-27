@@ -1,6 +1,6 @@
-;;; --- ETIQUETA PAPERSPACE v118.74 (MASTER SUITE PROFESSIONAL) ---
-;;; v118.74: Fix Final "bad function" y Seguridad de Reactor DoubleClick.
-
+;;; --- ETIQUETA PAPERSPACE v118.79 (MASTER SUITE) ---
+;;; v118.79: Soporte de Coordenadas Gigantes en ModelSpace y Penetración PSPACE
+  
 ;; --- 1. BASES DE DATOS DE CABLES ---
 (setq *MARLEW_DATA* '(
     ("10COND#12AWG" 19.30) ("10COND#14AWG" 17.30) ("10COND#16AWG" 15.00) ("10CT+PIT#16AWG" 28.00)
@@ -58,7 +58,24 @@
 
 ;; --- 2. CORE ---
 (defun CleanTag (s / res char i len) (if (and s (= (type s) 'STR)) (progn (setq s (strcase (vl-string-trim " " s)) res "" i 1 len (strlen s)) (while (<= i len) (setq char (substr s i 1)) (if (not (member char '(" " "_" "-"))) (setq res (strcat res char))) (setq i (1+ i))) res) ""))
-(defun GetBlockRef (en / res parents) (if (and en (listp en) (> (length en) 2)) (setq parents (last en) res (car (reverse parents))) (setq res (if (listp en) (car en) en))) (if (= (type res) 'ENAME) (setq res (vlax-ename->vla-object res))) res)
+
+(defun GetBlockRef (en / res parents obj)
+  (if (and en (listp en) (> (length en) 2))
+    (progn 
+      (setq parents (reverse (last en)) res nil)
+      (foreach p parents
+        (if (not res)
+          (progn 
+            (setq obj (vlax-ename->vla-object p))
+            (if (= (vla-get-ObjectName obj) "AcDbBlockReference") (setq res obj))
+          )
+        )
+      )
+      (if (not res) (setq res (vlax-ename->vla-object (last parents))))
+    )
+    (setq res (vlax-ename->vla-object (if (listp en) (car en) en)))
+  ) res)
+
 (defun GetAttrValue (en tag / vobj v found target current_tag) (setq target (CleanTag tag) v nil found nil vobj (if (= (type en) 'ENAME) (vlax-ename->vla-object en) en)) (if (and vobj (vlax-property-available-p vobj 'HasAttributes) (= (vla-get-HasAttributes vobj) :vlax-true)) (foreach at (vlax-invoke vobj 'GetAttributes) (setq current_tag (CleanTag (vla-get-TagString at))) (if (and (not found) (= current_tag target)) (setq v (vla-get-TextString at) found t)))) (if (not (and v (= (type v) 'STR))) (setq v "")) v)
 (defun SetAttrValue (en tag val / vobj found target current_tag) (setq target (CleanTag tag) found nil val (vl-princ-to-string val)) (setq vobj (if (= (type en) 'ENAME) (vlax-ename->vla-object en) en)) (if (and vobj (vlax-property-available-p vobj 'HasAttributes) (= (vla-get-HasAttributes vobj) :vlax-true)) (foreach at (vlax-invoke vobj 'GetAttributes) (setq current_tag (CleanTag (vla-get-TagString at))) (if (= current_tag target) (progn (vla-put-TextString at val) (vla-update at) (setq found t))))) found)
 
@@ -153,7 +170,7 @@
 (setq *CLONE_MODE* nil)
 
 ;; --- 5. DASHBOARD ---
-(defun InternalCablePicker (en / dcl_id dcl_file f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop obj_copy old_err cur_elev cats RefreshList update_oc data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id f_c f_q f_oc f_d f_e f_id cur_hand final_data ss_f j en_f obj_f bn_f UpdateData ent_pull sub_loop)
+(defun InternalCablePicker (en / dcl_id dcl_file f filtered cur_slot oc_val i diam_list cur_diam raw_el st loop obj_copy old_err cur_elev cats RefreshList update_oc data_copy data_tl data_cl cx1 cx2 cx3 cx4 cx5 qx1 qx2 qx3 qx4 qx5 cur_id f_c f_q f_oc f_d f_e f_id cur_hand final_data ss_f j en_f obj_f bn_f UpdateData ent_pull sub_loop cur_ent)
   (if *CLONE_MODE* (progn (princ "\n>>> Dashboard ya abierto. <<<") (setq *CLONE_MODE* nil) (princ))) 
   (setq *CLONE_MODE* t *DBLCLK_BACKUP* (getvar "DBLCLKEDIT")) (setvar "DBLCLKEDIT" 0)
   
@@ -183,7 +200,7 @@
   (setq i 1) (repeat 5 (set (read (strcat "cx" (itoa i))) (FindUltraSmartAttr en (strcat "CABLE_TIPO_" (itoa i)))) (set (read (strcat "qx" (itoa i))) (FindUltraSmartAttr en (strcat "CANTIDAD_" (itoa i)))) (setq i (1+ i)))
 
   (setq dcl_file "C:/Users/Dfelix25046/Downloads/db.dcl" f (open dcl_file "w"))
-  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v118.74 Final)\";" f)
+  (write-line "db_dlg : dialog { label=\"Dashboard Pro (v118.79 Final)\";" f)
   (write-line "  :column {" f)
   (write-line "    :edit_box { key=\"id_box\"; label=\"ID:\"; }" f)
   (write-line "    :row {" f)
@@ -280,26 +297,68 @@
       T) nil)
   (setvar "DBLCLKEDIT" *DBLCLK_BACKUP*) (setq *CLONE_MODE* nil) (setq *error* old_err) (princ))
 
-(defun DoubleClickCallback (reactor info / ent obj)
-  (setq ent (nentselp (car info)))
-  (if (and ent (setq obj (GetBlockRef ent)))
-    (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
-      (InternalCablePicker obj)
+(defun DoubleClickCallback (reactor info / pt ent obj found ss px_ratio delta pt1 pt2 i)
+  (setq found nil)
+  ;; 0. PickFirst Iterativo (Escanea todo lo preseleccionado)
+  (if (setq ss (cadr (ssgetfirst)))
+    (progn
+      (setq i 0)
+      (while (and (not found) (< i (sslength ss)))
+        (setq obj (vlax-ename->vla-object (ssname ss i)))
+        (if (and (= (vla-get-ObjectName obj) "AcDbBlockReference") (/= (FindUltraSmartAttr obj "DIAMETRO") ""))
+          (progn (InternalCablePicker obj) (setq found t))
+        )
+        (setq i (1+ i))
+      )
+    )
+  )
+  ;; 1. Fallback Geométrico (nentselp clásico)
+  (if (not found)
+    (progn 
+      (setq pt (car info))
+      (if (setq ent (nentselp pt))
+        (if (setq obj (GetBlockRef ent))
+          (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
+            (progn (InternalCablePicker obj) (setq found t))
+          )
+        )
+      )
+      ;; 2. Caja de Apertura Iterativa (Atrapa todos los bloques bajo el clic y los analiza)
+      (if (not found)
+        (progn
+          (setq px_ratio (/ (getvar "VIEWSIZE") (cadr (getvar "SCREENSIZE"))))
+          (setq delta (* (getvar "PICKBOX") px_ratio 3.0)) ; Cobertura triple de holgura
+          (setq pt1 (list (- (car pt) delta) (- (cadr pt) delta))) ; Punto 2D para Crossing Window infinto
+          (setq pt2 (list (+ (car pt) delta) (+ (cadr pt) delta))) ; Punto 2D para Crossing Window infinto
+          (if (setq ss (ssget "C" pt1 pt2 '((0 . "INSERT"))))
+            (progn
+              (setq i 0)
+              (while (and (not found) (< i (sslength ss)))
+                (setq obj (vlax-ename->vla-object (ssname ss i)))
+                (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
+                  (progn (InternalCablePicker obj) (setq found t))
+                )
+                (setq i (1+ i))
+              )
+            )
+          )
+        )
+      )
     )
   )
   (princ)
 )
 
 ;; --- 6. COMANDOS ---
-(defun c:ETIQUETAR (/ ent obj data ins opt p1 p2 p2_obj p1_obj s) 
+(defun c:ETIQUETAR (/ ent obj data ins opt p1 p2 p2_obj p1_obj s u_f) 
   (vl-load-com) 
   (setq s (if (= (getvar "TILEMODE") 1) (/ 1.0 (getvar "CANNOSCALEVALUE")) 1.0))
+  (setq u_f (if (= (getvar "MEASUREMENT") 0) (/ 1.0 25.4) 1.0))
   (initget "Bandera Area AMbos")
   (setq opt (cond ((getkword "\nTipo de etiqueta [Bandera/Area/AMbos] <Bandera>: ")) ("Bandera")))
-  (if (setq ent (car (entsel "\nSELECCIONE CONDUCTO ORIGEN: "))) 
+  (if (setq ent (nentselp "\nSELECCIONE CONDUCTO ORIGEN: ")) 
     (progn 
       (setq obj (GetBlockRef ent) data (GetConduitData obj)) 
-      (if (and (= (getvar "TILEMODE") 0) (> (getvar "CVPORT") 1)) (command "_.PSPACE")) 
       (if (setq ins (getpoint "\nCLIC PARA INSERTAR ETIQUETA: ")) 
         (cond 
           ((= opt "Bandera")
@@ -313,12 +372,10 @@
           ((= opt "AMbos")
            (if (and (tblsearch "BLOCK" "band") (tblsearch "BLOCK" "AREA_IDENT"))
              (progn 
-               ;; 1. Primero insertar el Area en el punto clicado (ins) - Escalado s
                (setq p2_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point ins) "AREA_IDENT" s s s 0)))
                (if (not (vl-catch-all-error-p p2_obj)) (ApplyDataToTag p2_obj data))
                
-               ;; 2. Luego insertar la Bandera a su derecha con offset escalado s
-               (setq p1 (list (+ (car ins) (* 9.0 s)) (- (cadr ins) (* 3.5 s)) (caddr ins)))
+               (setq p1 (list (+ (car ins) (* 9.0 s u_f)) (- (cadr ins) (* 3.5 s u_f)) (caddr ins)))
                (setq p1_obj (vl-catch-all-apply 'vla-InsertBlock (list (if (= (getvar "TILEMODE") 1) (vla-get-ModelSpace (vla-get-ActiveDocument (vlax-get-acad-object))) (vla-get-PaperSpace (vla-get-ActiveDocument (vlax-get-acad-object)))) (vlax-3d-point p1) "band" s s s 0)))
                (if (not (vl-catch-all-error-p p1_obj)) (ApplyDataToTag p1_obj data))
                
@@ -330,13 +387,13 @@
   ) (princ))
 
 (defun c:DASHBOARD () (vl-load-com) (if (setq e (nentselp "\nSeleccione conducto: ")) (progn (setq obj (GetBlockRef e)) (if (/= (FindUltraSmartAttr obj "DIAMETRO") "") (InternalCablePicker obj) (alert "No es conducto."))) (princ "\nCancelado.")) (princ))
-(defun c:SYNC_TAG () (vl-load-com) (if (setq ent (car (entsel "\nSELECCIONE ETIQUETA: "))) (progn (setq obj (GetBlockRef ent)) (if (setq src (car (entsel "\nSELECCIONE CONDUCTO: "))) (ApplyDataToTag obj (GetConduitData (GetBlockRef src))) (princ "\nCancelado."))) (princ)) (princ))
+(defun c:SYNC_TAG () (vl-load-com) (if (setq ent (nentselp "\nSELECCIONE ETIQUETA: ")) (progn (setq obj (GetBlockRef ent)) (if (setq src (nentselp "\nSELECCIONE CONDUCTO: ")) (ApplyDataToTag obj (GetConduitData (GetBlockRef src))) (princ "\nCancelado."))) (princ)) (princ))
 (defun c:FIX_ALL_CONDUITS () (vl-load-com) (if (setq ss (ssget "X" '((0 . "INSERT")))) (progn (setq i 0) (repeat (sslength ss) (setq en (ssname ss i) obj (vlax-ename->vla-object en)) (if (/= (FindUltraSmartAttr en "DIAMETRO") "") (ApplyDataToTag obj (GetConduitData en))) (setq i (1+ i))) (princ (strcat "\n>>> ACTUALIZADOS (" (itoa i) ") <<<"))) (princ "\nSin bloques.")) (princ))
 
 (defun InitReactors () 
   (vl-load-com) 
   (foreach r (vlr-reactors :vlr-mouse-reactor) (foreach c (cdr r) (vlr-remove c)))
   (vlr-mouse-reactor "C" '((:vlr-beginDoubleClick . DoubleClickCallback)))
-  (princ "\n>>> GHOST LINK v118.74 FINAL CARGADO. <<<"))
+  (princ "\n>>> GHOST LINK v118.79 FINAL CARGADO. <<<"))
 
 (InitReactors) (princ)

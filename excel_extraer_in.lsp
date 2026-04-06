@@ -31,11 +31,6 @@
       (if (setq pos (vl-string-search "(" vl)) (setq vl (vl-string-right-trim " " (substr vl 1 pos))))
       (if (setq pos (vl-string-search " " vl)) (setq vl (substr vl 1 pos)))
       
-      ;; Bloqueo Radical: Si no tiene guion (como los handles 57AF85), se vuelve N/A
-      (if (or (= vl "") (= vl ".") (= (strcase vl) "S/T")
-              (wcmatch (strcase vl) "*HIDDEN*") (wcmatch (strcase vl) "*VISIBLE*")
-              (not (wcmatch (strcase vl) "*-*"))) ; <--- RIGOR: Exige al menos un guion
-          (setq vl "N/A"))
       (setq r (list "TXT" vl))
     )
   )
@@ -178,7 +173,7 @@
                     )
                     (if (wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")
                         (progn (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX 54) (itoa r))) 'Value2 pz) (setq ft (+ ft pz)))
-                        (if (wcmatch (strcase n) "*CONDULETA*")
+                        (if (or (wcmatch (strcase n) "*CONDULETA*") (wcmatch (strcase n) "*LL*") (wcmatch (strcase n) "*LB*") (wcmatch (strcase n) "*LR*"))
                             (progn (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX 55) (itoa r))) 'Value2 pz) (setq fc (+ fc pz)))
                         )
                     )

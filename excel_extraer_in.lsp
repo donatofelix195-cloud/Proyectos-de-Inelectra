@@ -104,6 +104,28 @@
   result
 )
 
+;; --- VERIFICAR BALANCE DE COMILLAS ---
+(defun EX_QuotesBalanced (str / i len inQuotes c)
+  (setq i 1 len (strlen str) inQuotes nil)
+  (while (<= i len)
+    (setq c (substr str i 1))
+    (if (= c "\"") (setq inQuotes (not inQuotes)))
+    (setq i (1+ i))
+  )
+  (not inQuotes)
+)
+
+;; --- LEER LINEA CSV COMPLETA (Maneja saltos de linea dentro de comillas) ---
+(defun EX_ReadFullCSVLine (fp / line next_line)
+  (setq line (read-line fp))
+  (if line
+    (while (and (not (EX_QuotesBalanced line)) (setq next_line (read-line fp)))
+      (setq line (strcat line " " next_line))
+    )
+  )
+  line
+)
+
 ;; --- EXTRACCION DE TIPO PARA ACCESORIOS ---
 (defun EX_ExtraerTipo (desc / p1 p2)
   (setq p1 (vl-string-search "TIPO \"" desc))
@@ -128,11 +150,11 @@
     (progn (princ "\nError: No se puede abrir Book3.csv") (setq result nil))
     (progn
       (setq result nil found nil)
-      (setq pat_mat (if (wcmatch (strcase material) "*GALVANIZADO*") "*GALVANIZADO*,*ELECTROGALV*" (strcat "*" (strcase material) "*")))
+      (setq pat_mat (if (wcmatch (strcase material) "*GALVANIZADO*") "*GALVANIZADO*,*ELECTROGALV*,*GALV*" (strcat "*" (strcase material) "*")))
       (setq pat_forma (strcat "*FORMA " (strcase forma) "*"))
-      (setq pat_tipo (if tipo (strcat "*TIPO `\"" (strcase tipo) "*") nil))
+      (setq pat_tipo (if (and tipo (/= tipo "")) (strcat "*TIPO " tipo "*") nil))
       (read-line fp)
-      (while (and (not found) (setq line (read-line fp)))
+      (while (and (not found) (setq line (EX_ReadFullCSVLine fp)))
         (if (> (strlen line) 0)
           (progn
             (setq fields (EX_ParseCSVLine line))
@@ -150,9 +172,50 @@
                          (wcmatch (strcase col_b) pat_forma)
                          (or (not pat_tipo) (wcmatch (strcase col_b) pat_tipo))
                     )
-                  (progn 
-                    (setq result col_a *ultima_desc* col_b found T)
-                  )
+                  (progn (setq result col_a *ultima_desc* col_b found T))
+                )
+              )
+            )
+          )
+        )
+      )
+      (close fp)
+    )
+  )
+  result
+)
+
+;; --- BUSCAR CODIGO DE TAPA EN Book3.csv ---
+(defun EX_BuscarTapaCode (diametro forma material / csv_path fp line fields col_a col_b fq ft pat_mat pat_forma result found)
+  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq fp (open csv_path "r"))
+  (if (not fp)
+    (progn (princ "\nError: No se puede abrir Book3.csv") (setq result nil))
+    (progn
+      (setq result nil found nil)
+      (setq pat_mat (if (wcmatch (strcase material) "*GALVANIZADO*") "*GALVANIZADO*,*ELECTROGALV*,*GALV*" (strcat "*" (strcase material) "*")))
+      (setq pat_forma (strcat "*FORMA " (strcase forma) "*"))
+      (read-line fp)
+      (while (and (not found) (setq line (EX_ReadFullCSVLine fp)))
+        (if (> (strlen line) 0)
+          (progn
+            (setq fields (EX_ParseCSVLine line))
+            (if (>= (length fields) 20)
+              (progn
+                (setq col_a (nth 0 fields))
+                (setq col_b (nth 1 fields))
+                (setq fq (nth 16 fields))
+                (setq ft (nth 19 fields))
+                (if (and fq ft
+                         (= (strcase ft) "IN")
+                         (or (= (atof fq) (atof diametro))
+                             (and (member (atof diametro) '(0.5 0.75 1.0 1.25 1.5 2.0 3.0 4.0)) 
+                                  (< (abs (- (atof fq) (atof diametro))) 0.01)))
+                         (wcmatch (strcase col_b) "*TAPA*CONDULETA*")
+                         (wcmatch (strcase col_b) pat_mat)
+                         (wcmatch (strcase col_b) pat_forma)
+                    )
+                  (progn (setq result col_a found T))
                 )
               )
             )
@@ -219,13 +282,15 @@
 )
 
 (defun EX_AnexoTipos (xs cr counts forma mat / col_idx d_val total t_lr t_lb t_ll dec_dia rt tc tipo_pair current_assigned target_lr target_lb)
-  (setq col_idx 5) ;; Columna E
-  (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa cr))))
-  (vlax-put-property tc 'Value2 "--- ANEXO: TIPO CONDULETAS ---")
-  (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true)
-  (vlax-put-property (vlax-get-property tc 'Interior) 'Color 13421823)
-  
+  (setq col_idx 6) ;; Los datos empiezan en F
   (setq cr (1+ cr))
+  
+  ;; Etiquetas en columna E
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa cr))) 'Value2 "TIPO")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 1)))) 'Value2 "CANTIDAD")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 2)))) 'Value2 "CODIGO TIPO")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 3)))) 'Value2 "CODIGO TAPA")
+  
   (foreach item counts
     (setq d_val (car item) total (cdr item))
     (setq target_lr (fix (+ (* total 0.3) 0.5))
@@ -246,11 +311,22 @@
           (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa (+ cr 2)))))
           (vlax-put-property tc 'Value2 (EX_BuscarDentCode dec_dia forma mat "IN" (car tipo_pair)))
           
+          (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa (+ cr 3)))))
+          (vlax-put-property tc 'Value2 (EX_BuscarTapaCode dec_dia forma mat))
+          
           (setq col_idx (1+ col_idx))
         )
       )
     )
   )
+  
+  ;; Header Merge & Center (Fila original de cr - 1)
+  (setq tc (vlax-get-property xs 'Range (strcat "E" (itoa (1- cr)) ":" (EX_GEX (1- col_idx)) (itoa (1- cr)))))
+  (vlax-put-property tc 'MergeCells :vlax-true)
+  (vl-catch-all-apply 'vlax-put-property (list tc 'HorizontalAlignment -4108)) ;; xlCenter
+  (vlax-put-property tc 'Value2 "--- ANEXO: TIPO CONDULETAS ---")
+  (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true)
+  (vlax-put-property (vlax-get-property tc 'Interior) 'Color 13421823)
 )
 
 ;; --- COMANDO PRINCIPAL ---

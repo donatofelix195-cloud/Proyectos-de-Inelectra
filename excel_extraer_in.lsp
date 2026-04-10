@@ -143,30 +143,26 @@
 )
 
 ;; --- BUSCAR DENT_CODE EN Book3.csv ---
-(defun EX_BuscarDentCode (diametro forma material unidad tipo / csv_path fp line fields col_a col_b fq ft pat_mat pat_forma pat_tipo result found)
+(defun EX_BuscarDentCode (diametro forma material unidad tipo / csv_path fp line fields col_a col_b fq ft pat_mat pat_forma pat_tipo result found d_num)
   (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
     (progn (princ "\nError: No se puede abrir Book3.csv") (setq result nil))
     (progn
-      (setq result nil found nil)
-      (setq pat_mat (if (wcmatch (strcase material) "*GALVANIZADO*") "*GALVANIZADO*,*ELECTROGALV*,*GALV*" (strcat "*" (strcase material) "*")))
-      (setq pat_forma (strcat "*FORMA " (strcase forma) "*"))
-      (setq pat_tipo (if (and tipo (/= tipo "")) (strcat "*TIPO " tipo "*") nil))
-      (read-line fp)
+      (setq pat_mat (if (wcmatch (strcase material) "*GALV*") "*GALV*" (strcat "*" (strcase material) "*")))
+      (setq pat_forma (strcat "*FORMA*" (strcase forma) "*"))
+      (setq pat_tipo (if (and tipo (/= tipo "")) (strcat "*" (strcase tipo) "*") nil))
+      (read-line fp) ;; Header
       (while (and (not found) (setq line (EX_ReadFullCSVLine fp)))
         (if (> (strlen line) 0)
           (progn
             (setq fields (EX_ParseCSVLine line))
-            (if (>= (length fields) 20)
+            (if (>= (length fields) 17)
               (progn
-                (setq col_a (nth 0 fields))
-                (setq col_b (nth 1 fields))
-                (setq fq (nth 16 fields))
-                (setq ft (nth 19 fields))
-                (if (and fq ft
-                         (= (strcase ft) (strcase unidad))
-                         (= (atof fq) (atof diametro))
+                (setq col_a (nth 0 fields) col_b (nth 1 fields) fq (nth 16 fields))
+                (if (and (or (not unidad) (<= (length fields) 19) (wcmatch (strcase (nth 19 fields)) "*IN*"))
+                         (or (= (atof fq) d_num) (< (abs (- (atof fq) d_num)) 0.02))
                          (wcmatch (strcase col_b) "*CONDULETA*")
                          (wcmatch (strcase col_b) pat_mat)
                          (wcmatch (strcase col_b) pat_forma)
@@ -186,33 +182,68 @@
 )
 
 ;; --- BUSCAR CODIGO DE TAPA EN Book3.csv ---
-(defun EX_BuscarTapaCode (diametro forma material / csv_path fp line fields col_a col_b fq ft pat_mat pat_forma result found)
+(defun EX_BuscarTapaCode (diametro forma material / csv_path fp line fields col_a col_b fq result found d_num pat_mat pat_forma)
   (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
     (progn (princ "\nError: No se puede abrir Book3.csv") (setq result nil))
     (progn
-      (setq result nil found nil)
-      (setq pat_mat (if (wcmatch (strcase material) "*GALVANIZADO*") "*GALVANIZADO*,*ELECTROGALV*,*GALV*" (strcat "*" (strcase material) "*")))
-      (setq pat_forma (strcat "*FORMA " (strcase forma) "*"))
+      (setq pat_mat (if (wcmatch (strcase material) "*GALV*") "*GALV*" (strcat "*" (strcase material) "*")))
+      (setq pat_forma (strcat "*FORMA*" (strcase forma) "*"))
       (read-line fp)
       (while (and (not found) (setq line (EX_ReadFullCSVLine fp)))
         (if (> (strlen line) 0)
           (progn
             (setq fields (EX_ParseCSVLine line))
-            (if (>= (length fields) 20)
+            (if (>= (length fields) 17)
               (progn
-                (setq col_a (nth 0 fields))
-                (setq col_b (nth 1 fields))
-                (setq fq (nth 16 fields))
-                (setq ft (nth 19 fields))
-                (if (and fq ft
-                         (= (strcase ft) "IN")
-                         (or (= (atof fq) (atof diametro))
-                             (and (member (atof diametro) '(0.5 0.75 1.0 1.25 1.5 2.0 3.0 4.0)) 
-                                  (< (abs (- (atof fq) (atof diametro))) 0.01)))
+                (setq col_a (nth 0 fields) col_b (nth 1 fields) fq (nth 16 fields))
+                (if (and (or (<= (length fields) 19) (wcmatch (strcase (nth 19 fields)) "*IN*"))
+                         (or (= (atof fq) d_num) (< (abs (- (atof fq) d_num)) 0.02))
                          (wcmatch (strcase col_b) "*TAPA*CONDULETA*")
                          (wcmatch (strcase col_b) pat_mat)
+                         (wcmatch (strcase col_b) pat_forma)
+                    )
+                  (progn (setq result col_a found T))
+                )
+              )
+            )
+          )
+        )
+      )
+      (close fp)
+    )
+  )
+  result
+)
+
+;; --- BUSCAR CODIGO DE EMPACADURA EN Book3.csv ---
+(defun EX_BuscarEmpaCode (diametro forma material / csv_path fp line fields col_a col_b fq result found desc_pattern d_num pat_forma)
+  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq d_num (atof diametro))
+  (if (or (< (abs (- d_num 0.5)) 0.05) (< (abs (- d_num 0.75)) 0.05) (< (abs (- d_num 1.0)) 0.05))
+    (setq desc_pattern "*EMPACADURA*SOLIDA*")
+    (setq desc_pattern "*EMPACADURA*ABIERTA*")
+  )
+  (setq result nil found nil)
+  (setq fp (open csv_path "r"))
+  (if (not fp)
+    (progn (princ "\nError: No se puede abrir Book3.csv") (setq result nil))
+    (progn
+      (setq pat_forma (strcat "*FORMA*" (strcase forma) "*"))
+      (read-line fp)
+      (while (and (not found) (setq line (EX_ReadFullCSVLine fp)))
+        (if (> (strlen line) 0)
+          (progn
+            (setq fields (EX_ParseCSVLine line))
+            (if (>= (length fields) 17)
+              (progn
+                (setq col_a (nth 0 fields) col_b (nth 1 fields) fq (nth 16 fields))
+                (if (and (or (<= (length fields) 19) (wcmatch (strcase (nth 19 fields)) "*IN*"))
+                         (or (= (atof fq) d_num) (< (abs (- (atof fq) d_num)) 0.02))
+                         (wcmatch (strcase col_b) "*EMPACADURA*")
+                         (wcmatch (strcase col_b) desc_pattern)
                          (wcmatch (strcase col_b) pat_forma)
                     )
                   (progn (setq result col_a found T))
@@ -285,11 +316,16 @@
   (setq col_idx 6) ;; Los datos empiezan en F
   (setq cr (1+ cr))
   
-  ;; Etiquetas en columna E
+  ;; Etiquetas en columna E con estilo
+  (setq rt (vlax-get-property xs 'Range (strcat "E" (itoa cr) ":E" (itoa (+ cr 4)))))
+  (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823)
+  (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
+  
   (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa cr))) 'Value2 "TIPO")
   (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 1)))) 'Value2 "CANTIDAD")
   (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 2)))) 'Value2 "CODIGO TIPO")
   (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 3)))) 'Value2 "CODIGO TAPA")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 4)))) 'Value2 "CODIGO EMPACADURA")
   
   (foreach item counts
     (setq d_val (car item) total (cdr item))
@@ -313,6 +349,9 @@
           
           (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa (+ cr 3)))))
           (vlax-put-property tc 'Value2 (EX_BuscarTapaCode dec_dia forma mat))
+
+          (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa (+ cr 4)))))
+          (vlax-put-property tc 'Value2 (EX_BuscarEmpaCode dec_dia forma mat))
           
           (setq col_idx (1+ col_idx))
         )
@@ -329,9 +368,41 @@
   (vlax-put-property (vlax-get-property tc 'Interior) 'Color 13421823)
 )
 
+(defun EX_AnexoCondC (xs cr counts forma mat / col_idx d_val sum_in pz dec_dia rt tc codigo)
+  (setq col_idx 6) ;; Col F
+  (setq cr (1+ cr))
+  (setq rt (vlax-get-property xs 'Range (strcat "E" (itoa cr) ":E" (itoa (+ cr 2)))))
+  (vlax-put-property (vlax-get-property rt 'Interior) 'Color 13421823)
+  (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
+  (vlax-put-property (vlax-get-property rt 'Font) 'Color 0)
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa cr))) 'Value2 "DIAMETRO")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 1)))) 'Value2 "CANTIDAD")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 2)))) 'Value2 "CODIGO")
+  (foreach item counts
+    (setq d_val (car item) sum_in (cdr item))
+    (setq pz (fix (+ (/ (* sum_in 0.0254) 9.0) 0.999999)))
+    (setq dec_dia (EX_DiametroDecimal d_val))
+    (setq codigo (EX_BuscarDentCode dec_dia forma mat "IN" "C"))
+    (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa cr))))
+    (vlax-put-property tc 'Value2 d_val)
+    (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa (+ cr 1)))))
+    (vlax-put-property tc 'Value2 pz)
+    (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa (+ cr 2)))))
+    (vlax-put-property tc 'Value2 codigo)
+    (setq col_idx (1+ col_idx))
+  )
+  (setq tc (vlax-get-property xs 'Range (strcat "E" (itoa (1- cr)) ":" (EX_GEX (1- col_idx)) (itoa (1- cr)))))
+  (vlax-put-property tc 'MergeCells :vlax-true)
+  (vl-catch-all-apply 'vlax-put-property (list tc 'HorizontalAlignment -4108))
+  (vlax-put-property tc 'Value2 "--- ANEXO: CONDULETA TIPO C ---")
+  (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true)
+  (vlax-put-property (vlax-get-property tc 'Font) 'Color 0)
+  (vlax-put-property (vlax-get-property tc 'Interior) 'Color 13421823)
+)
+
 ;; --- COMANDO PRINCIPAL ---
 
-(defun c:EXCEL_PRO ( / ss i e o n bl current df f id rs sb q c40 c41 xa xb xs r c t_s ty b_n b_o t_g v_l c_i er mi hm ft fc cr h tc ra pz ap range_str spm_col tipo_col dia_val dent_code *forma_idx* *mat_idx* desc_tee cond_counts cond_assigned d_val it_c target_lr target_lb current_lr current_lb current_ll assigned_tipo)
+(defun c:EXCEL_PRO ( / ss i e o n bl current df f id rs sb q c40 c41 xa xb xs r c t_s ty b_n b_o t_g v_l c_i er mi hm ft fc cr h tc ra pz ap range_str spm_col tipo_col dia_val dent_code *forma_idx* *mat_idx* desc_tee cond_counts cond_assigned d_val it_c target_lr target_lb current_lr current_lb current_ll assigned_tipo pipe_sums tcm item_p start_cr start_cr_pipe)
   (princ "\n--- EXCEL PRO v8.8.4 IN ---")
   (if (not *forma_sel*) (setq *forma_sel* "7"))
   (if (not *mat_sel*)   (setq *mat_sel* "Acero Galvanizado"))
@@ -363,10 +434,20 @@
       (if (= rs 1)
         (progn (setq sb '()) (foreach x bl (if (= (cdr x) 1) (setq sb (cons (car x) sb))))
           (if sb 
-            (progn (setq mi 53 t_s '("BLOQUE") ty '() i 0 hm nil ft 0.0 fc 0.0)
+            (progn (setq mi 53 t_s '("BLOQUE") ty '() i 0 hm nil ft 0.0 fc 0.0 pipe_sums '())
               (repeat (sslength ss) (setq e (ssname ss i) o (vlax-ename->vla-object e) n (vl-princ-to-string (vl-catch-all-apply 'vla-get-EffectiveName (list o)))) (if (and (member n sb) (not (member n ty))) (setq ty (append ty (list n)))) (setq i (1+ i)))
               (foreach b_n ty (setq b_o (EX_GBO b_n)) (foreach t_g b_o (if (not (member t_g t_s)) (setq t_s (append t_s (list t_g))))))
               
+              ;; --- Ajustar tags para reporte dual de longitud ---
+              (setq t_s_final '())
+              (foreach h t_s
+                (if (member (strcase h) '("LONGITUD" "L" "LEN" "LENGTH" "LONG"))
+                  (setq t_s_final (append t_s_final (list "LONGITUD PIES-PULGADAS" "LONGITUD MTS")))
+                  (setq t_s_final (append t_s_final (list h)))
+                )
+              )
+              (setq t_s t_s_final)
+
               ;; --- Pre-conteo de conduletas para distribucion porcentual ---
               (setq cond_counts '() i 0)
               (repeat (sslength ss)
@@ -396,13 +477,19 @@
                 (if (member n sb) 
                   (progn 
                     (vl-catch-all-apply 'vlax-put-property (list (vlax-get-property xs 'Range (strcat "A" (itoa r))) 'Value2 n))
-                    (setq ra '() pz 1.0) 
+                    (setq ra '() pz 1.0 dia_val nil) 
                     (if (and (vlax-property-available-p o 'HasAttributes) (= (vla-get-HasAttributes o) :vlax-true)) 
                       (foreach at (vlax-invoke o 'GetAttributes) (setq ra (cons (cons (vla-get-TagString at) (vla-get-TextString at)) ra)))
                     )
                     (foreach co (EX_GCA n) (setq ra (cons co ra)))
+                    ;; NEW: Pre-extract diameter for use in length summation
+                    (foreach ap ra (if (and (not dia_val) (member (strcase (car ap)) '("DIAMETRO" "DIAM" "D" "DIA" "INPUT_1"))) (setq dia_val (cdr ap))))
+                    
                     (foreach ap ra 
-                      (setq t_g (car ap) v_l (cdr ap) c_i (vl-position t_g t_s))
+                      (setq t_g (car ap) v_l (cdr ap))
+                      (setq c_i (if (member (strcase t_g) '("LONGITUD" "L" "LEN" "LENGTH" "LONG")) 
+                                     (vl-position "LONGITUD PIES-PULGADAS" t_s)
+                                     (vl-position t_g t_s)))
                       (if (and c_i (member (strcase t_g) '("PZ" "PZS" "CANT" "QTY" "CANTIDAD"))) 
                         (setq pz (if (and v_l (/= v_l "")) (distof v_l) 1.0))
                       )
@@ -414,11 +501,23 @@
                               ((= (car er) "TXT") (vlax-put-property tc 'Value2 (cadr er))) 
                               ((= (car er) "NUM") (vlax-put-property tc 'Value2 (cadr er))) 
                               ((= (car er) "RAW") (vlax-put-property tc 'Value2 (cadr er))) 
-                              ((= (car er) "WIN") 
-                                (vlax-put-property tc 'Value2 (cadr er)) 
-                                (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX mi) (itoa r))) 'Value2 (caddr er)) 
-                                (setq hm T)
-                              )
+                                ((= (car er) "WIN") 
+                                  (vlax-put-property tc 'Value2 (cadr er)) 
+                                  (setq tcm (vlax-get-property xs 'Range (strcat (EX_GEX (+ 2 c_i)) (itoa r))))
+                                  (vlax-put-property tcm 'Value2 (* (caddr er) 0.0254))
+                                  (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX mi) (itoa r))) 'Value2 (caddr er)) 
+                                  (setq hm T)
+                                  ;; Accumulate conduit sums per diameter
+                                  (if (and dia_val (wcmatch (strcase n) "CONDUIT_*"))
+                                    (progn
+                                      (setq item_p (assoc dia_val pipe_sums))
+                                      (if item_p 
+                                        (setq pipe_sums (subst (cons dia_val (+ (cdr item_p) (caddr er))) item_p pipe_sums))
+                                        (setq pipe_sums (cons (cons dia_val (caddr er)) pipe_sums))
+                                      )
+                                    )
+                                  )
+                                )
                             )
                           )
                         )
@@ -478,7 +577,16 @@
               (setq start_cr cr)
               (if (> fc 0.0) (setq cr (EX_AnexoCond xs cr (strcat (EX_GEX 55) "2:" (EX_GEX 55) (itoa (1- r))))))
               (if (> fc 0.0) (EX_AnexoTipos xs start_cr cond_counts *forma_sel* *mat_sel*))
-              (if hm (progn (setq range_str (strcat (EX_GEX mi) "2:" (EX_GEX mi) (itoa (1- r)))) (setq cr (EX_AnexoPipe xs cr range_str mi))))
+              
+              (setq cr (+ cr 3)) 
+              (if hm 
+                (progn 
+                  (setq range_str (strcat (EX_GEX mi) "2:" (EX_GEX mi) (itoa (1- r)))) 
+                  (EX_AnexoPipe xs cr range_str mi)
+                  (if pipe_sums (EX_AnexoCondC xs cr pipe_sums *forma_sel* *mat_sel*))
+                  (setq cr (+ cr 3))
+                )
+              )
               
               ;; Forzar actualizacion y expansion total
               (vlax-put-property xa 'ScreenUpdating :vlax-true)

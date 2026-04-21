@@ -142,9 +142,34 @@
   )
 )
 
+;; --- OBTENER RUTA DINAMICA DE Book3.csv (Caché global para pedirlo solo una vez) ---
+(defun EX_GetCSVPath (/ p)
+  (if (and *EX_CSV_PATH* (findfile *EX_CSV_PATH*))
+    *EX_CSV_PATH*
+    (progn
+      (setq p (cond
+        ;; 1. Intenta buscarlo en la misma carpeta del dibujo abierto
+        ((findfile (strcat (getvar "DWGPREFIX") "Book3.csv")))
+        ;; 2. Busca en las rutas de soporte de AutoCAD o carpeta actual
+        ((findfile "Book3.csv"))
+        ;; 3. Busca relativo al script LISP (si está en la ruta de soporte)
+        ((and (setq p (findfile "excel_extraer_in.lsp"))
+              (setq p (strcat (vl-filename-directory p) "\\Book3.csv"))
+              (findfile p)) p)
+        (t nil)
+      ))
+      ;; 4. Si falla todo, pide al usuario que lo encuentre manualmente
+      (if (not p) 
+        (setq p (getfiled "No se encontro Book3.csv automáticamente. Por favor, selecciónelo:" "Book3.csv" "csv" 16))
+      )
+      (setq *EX_CSV_PATH* p)
+    )
+  )
+)
+
 ;; --- BUSCAR DENT_CODE EN Book3.csv ---
 (defun EX_BuscarDentCode (diametro forma material unidad tipo / csv_path fp line fields col_a col_b fq ft pat_mat pat_forma pat_tipo result found d_num)
-  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq csv_path (EX_GetCSVPath))
   (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
@@ -183,7 +208,7 @@
 
 ;; --- BUSCAR CODIGO DE TAPA EN Book3.csv ---
 (defun EX_BuscarTapaCode (diametro forma material / csv_path fp line fields col_a col_b fq result found d_num pat_mat pat_forma)
-  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq csv_path (EX_GetCSVPath))
   (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
@@ -220,7 +245,7 @@
 
 ;; --- BUSCAR CODIGO DE EMPACADURA EN Book3.csv ---
 (defun EX_BuscarEmpaCode (diametro forma material / csv_path fp line fields col_a col_b fq result found desc_pattern d_num pat_forma)
-  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq csv_path (EX_GetCSVPath))
   (setq d_num (atof diametro))
   (if (or (< (abs (- d_num 0.5)) 0.05) (< (abs (- d_num 0.75)) 0.05) (< (abs (- d_num 1.0)) 0.05))
     (setq desc_pattern "*EMPACADURA*SOLIDA*")
@@ -284,9 +309,9 @@
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 1))))) (vlax-put-property tc 'Formula (strcat "=SUBTOTAL(109," rs ")")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 2)))) 'Value2 "LR (30%)")
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 2))))) (vlax-put-property tc 'Formula (strcat "=ROUND(C" (itoa (+ cr 1)) "*0.3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
-  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "LB (30%)")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 3)))) 'Value2 "LL (30%)")
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 3))))) (vlax-put-property tc 'Formula (strcat "=ROUND(C" (itoa (+ cr 1)) "*0.3,0)")) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
-  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "LL (40%)")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "B" (itoa (+ cr 4)))) 'Value2 "LB (40%)")
   (setq tc (vlax-get-property xs 'Range (strcat "C" (itoa (+ cr 4))))) (vlax-put-property tc 'Formula (strcat "=C" (itoa (+ cr 1)) "-C" (itoa (+ cr 2)) "-C" (itoa (+ cr 3)))) (vlax-put-property (vlax-get-property tc 'Font) 'Bold :vlax-true) (vlax-put-property (vlax-get-property tc 'Font) 'Color 16711680)
   (+ cr 6)
 )
@@ -330,11 +355,11 @@
   (foreach item counts
     (setq d_val (car item) total (cdr item))
     (setq target_lr (fix (+ (* total 0.3) 0.5))
-          target_lb (fix (+ (* total 0.3) 0.5))
-          t_ll (- total target_lr target_lb))
+          target_ll (fix (+ (* total 0.3) 0.5))
+          t_lb (- total target_lr target_ll))
     (setq dec_dia (EX_DiametroDecimal d_val))
     
-    (foreach tipo_pair (list (cons "LR" target_lr) (cons "LB" target_lb) (cons "LL" t_ll))
+    (foreach tipo_pair (list (cons "LR" target_lr) (cons "LL" target_ll) (cons "LB" t_lb))
       (if (> (cdr tipo_pair) 0)
         (progn
           (setq tc (vlax-get-property xs 'Range (strcat (EX_GEX col_idx) (itoa cr))))
@@ -369,7 +394,7 @@
 )
 
 (defun EX_BuscarUnionCode (diametro material / csv_path fp line fields col_a col_b fq result found d_num pat_mat)
-  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq csv_path (EX_GetCSVPath))
   (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
@@ -447,7 +472,7 @@
 )
 
 (defun EX_BuscarExpansionCode (diametro / csv_path fp line fields col_a col_b fq result found d_num)
-  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq csv_path (EX_GetCSVPath))
   (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
@@ -548,7 +573,7 @@
 )
 
 (defun EX_BuscarTubRigidaCode (diametro material / csv_path fp line fields col_a col_b fq result found d_num pat_mat)
-  (setq csv_path "C:\\Users\\nleon25050\\Documents\\Antigravity\\Proyectos-de-Inelectra\\Book3.csv")
+  (setq csv_path (EX_GetCSVPath))
   (setq d_num (atof diametro) result nil found nil)
   (setq fp (open csv_path "r"))
   (if (not fp)
@@ -591,7 +616,7 @@
   (vlax-put-property (vlax-get-property rt 'Font) 'Bold :vlax-true)
   (vlax-put-property (vlax-get-property rt 'Font) 'Color 0)
   (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa cr))) 'Value2 "DIAMETRO")
-  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 1)))) 'Value2 "CANTIDAD")
+  (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 1)))) 'Value2 "PIEZAS")
   (vlax-put-property (vlax-get-property xs 'Range (strcat "E" (itoa (+ cr 2)))) 'Value2 "CODIGO TUB. RIGIDA")
   (foreach item counts
     (setq d_val (car item) sum_in (cdr item))
@@ -639,12 +664,12 @@
     (progn (ULV) 
       (start_list "forma") (add_list "7") (add_list "8") (end_list)
       (set_tile "forma" (if (= *forma_sel* "8") "1" "0"))
-      (start_list "material") (add_list "Acero Galvanizado") (end_list)
-      (set_tile "material" "0")
+      (start_list "material") (add_list "Acero Galvanizado") (add_list "Aluminio") (end_list)
+      (set_tile "material" (if (= *mat_sel* "Aluminio") "1" "0"))
       (action_tile "f" "(UF $value)") (action_tile "l" "(TS $value)") 
       (action_tile "forma"    "(setq *forma_idx* $value)")
       (action_tile "material" "(setq *mat_idx* $value)")
-      (action_tile "accept" "(progn (setq *forma_sel* (if (= *forma_idx* \"1\") \"8\" \"7\")) (setq *mat_sel* \"Acero Galvanizado\") (done_dialog 1))")
+      (action_tile "accept" "(progn (setq *forma_sel* (if (= *forma_idx* \"1\") \"8\" \"7\")) (setq *mat_sel* (if (= *mat_idx* \"1\") \"Aluminio\" \"Acero Galvanizado\")) (done_dialog 1))")
       (action_tile "cancel" "(done_dialog 0)") (setq rs (start_dialog)) (unload_dialog id)
       (if (= rs 1)
         (progn (setq sb '()) (foreach x bl (if (= (cdr x) 1) (setq sb (cons (car x) sb))))
@@ -764,25 +789,29 @@
                     )
                     (if (and dia_val (/= dia_val ""))
                       (progn
-                        (setq *ultima_desc* nil assigned_tipo nil)
+                        (setq *ultima_desc* nil assigned_tipo nil dent_code nil)
                         (cond 
+                          ((wcmatch (strcase n) "CONDUIT_*")
+                           (setq dent_code (EX_BuscarTubRigidaCode (EX_DiametroDecimal dia_val) *mat_sel*)))
                           ((wcmatch (strcase n) "*CONDULETA_TIPO_TEE*")
                            (setq assigned_tipo "T"))
                           ((and (wcmatch (strcase n) "CONDULETA_*") (not (wcmatch (strcase n) "CONDULETA_TIPO_*")))
                            (setq it_c (assoc dia_val cond_counts) it_a (assoc dia_val cond_assigned))
                            (if (not it_a) (setq it_a (cons dia_val 0) cond_assigned (cons it_a cond_assigned)))
                            (setq target_lr (fix (+ (* (cdr it_c) 0.3) 0.5))
-                                 target_lb (fix (+ (* (cdr it_c) 0.3) 0.5))
+                                 target_ll (fix (+ (* (cdr it_c) 0.3) 0.5))
                                  current_assigned (cdr it_a))
                            (cond 
                              ((< current_assigned target_lr) (setq assigned_tipo "LR"))
-                             ((< current_assigned (+ target_lr target_lb)) (setq assigned_tipo "LB"))
-                             (t (setq assigned_tipo "LL"))
+                             ((< current_assigned (+ target_lr target_ll)) (setq assigned_tipo "LL"))
+                             (t (setq assigned_tipo "LB"))
                            )
                            (setq cond_assigned (subst (cons dia_val (1+ current_assigned)) it_a cond_assigned))
                            (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX tipo_col) (itoa r))) 'Value2 assigned_tipo))
                         )
-                        (setq dent_code (EX_BuscarDentCode (EX_DiametroDecimal dia_val) *forma_sel* *mat_sel* "IN" assigned_tipo))
+                        (if (not dent_code)
+                          (setq dent_code (EX_BuscarDentCode (EX_DiametroDecimal dia_val) *forma_sel* *mat_sel* "IN" assigned_tipo))
+                        )
                         (if dent_code
                           (progn
                             (vlax-put-property (vlax-get-property xs 'Range (strcat (EX_GEX spm_col) (itoa r))) 'Value2 dent_code)

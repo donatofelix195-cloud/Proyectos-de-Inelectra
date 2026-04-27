@@ -1,7 +1,7 @@
-;;; --- DASHBOARD CABLE MANAGEMENT PRO v120.0.1 ---
+;;; --- DASHBOARD CABLE MANAGEMENT PRO v120.0.2 ---
+;;; v120.0.2: Fix FIX_ALL_CONDUITS (VLA-Object error), Enhanced Stability.
 ;;; v120.0.1: Heuristic Shield (Blocks AutoCAD Handles), Tag Sanitizer v2,
 ;;; v120.0.1: Pattern Match *-*-*, Silent Audit Points, Layer Status NA.
-;;; v120.0.1: 39% Occupancy Compliance & Heuristic Sequence Recovery.
 ;; --- 1. BASES DE DATOS DE CABLES ---
 (setq *MARLEW_DATA* '(
     ("10COND#12AWG" 19.30) ("10COND#14AWG" 17.30) ("10COND#16AWG" 15.00) ("10CT+PIT#16AWG" 28.00)
@@ -164,13 +164,27 @@
   (setq el (vl-string-left-trim " " (vl-string-right-trim " " el)))
   (foreach sym '("%%C" "Ø") (while (wcmatch diam (strcat "*" sym "*")) (setq diam (vl-string-subst "" sym diam))))
   (setq diam (vl-string-left-trim " " (vl-string-right-trim " " diam)))
-  (setq ca (GetInternalArea diam) ta 0.0 i 1 cl nil tl nil)
+  (setq ta 0.0 i 1 cl nil tl nil)
   (repeat 5 
     (setq tv (FindUltraSmartAttr obj (strcat "CABLE_TIPO_" (itoa i))) cv (FindUltraSmartAttr obj (strcat "CANTIDAD_" (itoa i))))
     (if (and tv (/= (CleanTag tv) "")) 
       (progn (setq cl (cons (if (and cv (/= cv "")) cv "1") cl) tl (cons tv tl) dc (GetSmartDiameter tv)) 
              (if (> dc 0) (setq ta (+ ta (* (max 1.0 (atof (car cl))) (* pi (/ (expt dc 2) 4.0))))))))
     (setq i (1+ i)))
+
+  ;; --- AUTO-SIZING DE INGENIERÍA (Cumplimiento <= 39%) ---
+  (setq optimal_diam nil)
+  (if (> ta 0.0)
+    (progn
+      (foreach d '("3/4\"" "1\"" "1 1/2\"" "2\"")
+        (if (and (not optimal_diam) (<= (* (/ ta (GetInternalArea d)) 100.0) 39.0))
+          (setq optimal_diam d)))
+      (if (not optimal_diam) (setq optimal_diam "2\""))
+    )
+    (setq optimal_diam "3/4\"")
+  )
+  
+  (setq diam optimal_diam ca (GetInternalArea diam))
   (setq oc (rtos (* (/ ta ca) 100.0) 2 2)) 
   (list el diam oc (reverse tl) (reverse cl) name (vla-get-Handle obj)))
 
@@ -200,6 +214,28 @@
   (vl-catch-all-apply 'SetVisibilityState (list tag_obj (strcat "CB" (itoa (length tl)))))
   (if (and parent_h (/= parent_h "")) (progn (SetXDataHandle (vlax-vla-object->ename tag_obj) parent_h) (SetUltraSmartAttr tag_obj "HANDLE" parent_h)))
   (vla-update tag_obj))
+
+(defun BroadcastConduitData (conduit_obj / data cur_hand ss_f j en_f obj_f bn_f cur_id)
+  (setq data (GetConduitData conduit_obj)
+        cur_hand (vla-get-Handle conduit_obj)
+        cur_id (nth 5 data))
+  (if (setq ss_f (ssget "X" '((0 . "INSERT"))))
+    (progn 
+      (setq j 0) 
+      (repeat (sslength ss_f) 
+        (setq en_f (ssname ss_f j) 
+              obj_f (vlax-ename->vla-object en_f) 
+              bn_f (if (vlax-property-available-p obj_f 'EffectiveName) (strcase (vla-get-EffectiveName obj_f)) ""))
+        (if (or (wcmatch bn_f "*BAND*") (wcmatch bn_f "*AREA_IDENT*"))
+          (if (or (= (GetXDataHandle en_f) cur_hand) 
+                  (and (= (GetXDataHandle en_f) "") 
+                       (= (CleanTag (if (wcmatch bn_f "*AREA_IDENT*") 
+                                       (strcat (GetAttrValue en_f "AREA") (GetAttrValue en_f "IDENT")) 
+                                       (FindUltraSmartAttr en_f "TAG"))) 
+                          (CleanTag cur_id))))
+            (ApplyDataToTag obj_f data)))
+        (setq j (1+ j)))))
+)
 
 (defun SetVisibilityState (blk_obj state_name / props ok prop_name) (setq props (vlax-invoke blk_obj 'GetDynamicBlockProperties) ok nil) (foreach p props (setq prop_name (vla-get-PropertyName p)) (if (and (not ok) (wcmatch (strcase prop_name) "*VISIBILIDAD*,*VISIBILITY*")) (progn (vla-put-Value p (vlax-make-variant state_name 8)) (setq ok t)))) ok)
 
@@ -389,82 +425,48 @@
       (entmake (list '(0 . "POINT") (cons 10 ip) (cons 8 aud_lay)))
       (princ (strcat "\n[LISTO]: Paper v120 generado como [" f_id "] y marcado en auditoria."))
 
-      (setq final_data (GetConduitData (if (= (type en) 'ENAME) (vlax-ename->vla-object en) en)))
-      (if (setq ss_f (ssget "X" '((0 . "INSERT"))))
-        (progn (setq j 0) 
-          (repeat (sslength ss_f) 
-            (setq en_f (ssname ss_f j) obj_f (vlax-ename->vla-object en_f) bn_f (if (vlax-property-available-p obj_f 'EffectiveName) (strcase (vla-get-EffectiveName obj_f)) ""))
-            (if (or (wcmatch bn_f "*BAND*") (wcmatch bn_f "*AREA_IDENT*"))
-              (if (or (= (GetXDataHandle en_f) cur_hand) (and (= (GetXDataHandle en_f) "") (= (CleanTag (if (wcmatch bn_f "*AREA_IDENT*") (strcat (GetAttrValue en_f "AREA") (GetAttrValue en_f "IDENT")) (FindUltraSmartAttr en_f "TAG"))) (CleanTag f_id))))
-                (ApplyDataToTag obj_f final_data)))
-            (setq j (1+ j)))))
+      (princ (strcat "\n[LISTO]: Paper v120 generado como [" f_id "] y marcado en auditoria."))
+      (BroadcastConduitData (vlax-ename->vla-object (if (= (type en) 'ENAME) en (vlax-vla-object->ename en))))
       T) nil)
   (setvar "DBLCLKEDIT" *DBLCLK_BACKUP*) (setq *CLONE_MODE* nil) (setq *error* old_err) (princ))
 
-(defun DoubleClickCallback (reactor info / pt ent obj found ss px_ratio i err min_p max_p tol bbox_err)
+(defun IsConduitBlock (obj / d t_val)
+  (and 
+    obj
+    (= (type obj) 'VLA-OBJECT)
+    (= (vla-get-ObjectName obj) "AcDbBlockReference")
+    (vlax-property-available-p obj 'HasAttributes)
+    (= (vla-get-HasAttributes obj) :vlax-true)
+    ;; Filtro Estricto: Debe tener Diámetro y un TAG con formato o N/A
+    (/= (FindUltraSmartAttr obj "DIAMETRO") "")
+    (setq t_val (FindUltraSmartAttr obj "TAG"))
+    (or (wcmatch (strcase t_val) "*-*-*") (= (strcase t_val) "N/A") (= t_val ""))
+  )
+)
+
+(defun DoubleClickCallback (reactor info / pt ent obj found ss i)
   (setq found nil)
-  
-  (setq err (vl-catch-all-apply
+  (vl-catch-all-apply
     '(lambda ()
-      ;; 0. PickFirst Iterativo
+      ;; 1. Revisar PickFirst (si ya estaba seleccionado)
       (if (setq ss (cadr (ssgetfirst)))
         (progn
           (setq i 0)
           (while (and (not found) (< i (sslength ss)))
             (setq obj (vlax-ename->vla-object (ssname ss i)))
-            (if (and (= (vla-get-ObjectName obj) "AcDbBlockReference") (/= (FindUltraSmartAttr obj "DIAMETRO") ""))
-              (progn (InternalCablePicker obj) (setq found t))
-            )
-            (setq i (1+ i))
-          )
-        )
-      )
+            (if (IsConduitBlock obj)
+              (progn (InternalCablePicker obj) (setq found t)))
+            (setq i (1+ i)))))
       
-      ;; 1. Fallback nentselp
+      ;; 2. Revisar punto del clic (nentselp)
       (if (not found)
         (progn 
           (setq pt (car info))
-          (if (setq ent (nentselp pt))
-            (if (setq obj (GetBlockRef ent))
-              (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
-                (progn (InternalCablePicker obj) (setq found t))
-              )
-            )
-          )
-          
-          ;; 2. Bounding Box Crudo Matemático (Anti-Glitches Georeferenciados)
-          (if (not found)
-            (if (setq ss (ssget "X" '((0 . "INSERT"))))
-              (progn
-                (setq i 0)
-                (while (and (not found) (< i (sslength ss)))
-                  (setq obj (vlax-ename->vla-object (ssname ss i)))
-                  (if (/= (FindUltraSmartAttr obj "DIAMETRO") "")
-                    (progn
-                      (setq bbox_err (vl-catch-all-apply 'vla-GetBoundingBox (list obj 'min_pt 'max_pt)))
-                      (if (not (vl-catch-all-error-p bbox_err))
-                        (progn
-                          (setq min_p (vlax-safearray->list min_pt) max_p (vlax-safearray->list max_pt))
-                          (setq tol (* (getvar "VIEWSIZE") 0.05))
-                          (if (and (>= (car pt) (- (car min_p) tol)) (<= (car pt) (+ (car max_p) tol))
-                                   (>= (cadr pt) (- (cadr min_p) tol)) (<= (cadr pt) (+ (cadr max_p) tol)))
-                            (progn (InternalCablePicker obj) (setq found t))
-                          )
-                        )
-                      )
-                    )
-                  )
-                  (setq i (1+ i))
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  ))
-  (princ)
-)
+          (if (and (setq ent (nentselp pt))
+                   (setq obj (GetBlockRef ent))
+                   (IsConduitBlock obj))
+            (progn (InternalCablePicker obj) (setq found t)))))))
+  (princ))
 
 ;; --- 6. COMANDOS ---
 (defun c:ETIQUETAR (/ ent obj data ins opt p1 p2 p2_obj p1_obj s u_f) 
@@ -517,7 +519,24 @@
       (princ (strcat "\n>>> LIMPIEZA COMPLETADA. ELEMENTOS SANADOS: " (itoa j) " <<<")))
     (princ "\nNo se encontraron bloques.")) (princ))
 
-(defun c:FIX_ALL_CONDUITS () (vl-load-com) (if (setq ss (ssget "X" '((0 . "INSERT")))) (progn (setq i 0) (repeat (sslength ss) (setq en (ssname ss i) obj (vlax-ename->vla-object en)) (if (/= (FindUltraSmartAttr en "DIAMETRO") "") (ApplyDataToTag obj (GetConduitData en))) (setq i (1+ i))) (princ (strcat "\n>>> ACTUALIZADOS (" (itoa i) ") <<<"))) (princ "\nSin bloques.")) (princ))
+(defun c:FIX_ALL_CONDUITS () 
+  (vl-load-com) 
+  (princ "\n>>> INICIANDO ACTUALIZACION GLOBAL Y SINCRONIZACION... <<<")
+  (if (setq ss (ssget "X" '((0 . "INSERT")))) 
+    (progn 
+      (setq i 0 j 0) 
+      (repeat (sslength ss) 
+        (setq en (ssname ss i) obj (vlax-ename->vla-object en)) 
+        (if (and (IsConduitBlock obj) (vlax-property-available-p obj 'HasAttributes))
+          (progn 
+            ;; 1. Recalcular y Aplicar al propio conducto
+            (ApplyDataToTag obj (GetConduitData obj)) 
+            ;; 2. Sincronizar con todas sus etiquetas vinculadas
+            (BroadcastConduitData obj)
+            (setq j (1+ j))))
+        (setq i (1+ i))) 
+      (princ (strcat "\n>>> ACTUALIZADOS (" (itoa j) "/" (itoa i) ") <<<"))) 
+    (princ "\nSin bloques.")) (princ))
 
 (defun InitReactors () 
   (vl-load-com) 
